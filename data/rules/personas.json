@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "death_penalty": 5.0,
+  "personas": {
+    "runner": {
+      "weights": {"proximity_to_exit": 1.0, "steps": -0.01}
+    },
+    "monster_killer": {
+      "weights": {"monster_ratio": 0.7, "proximity_to_exit": 0.3}
+    },
+    "treasure_collector": {
+      "weights": {"treasure_ratio": 0.7, "proximity_to_exit": 0.3}
+    },
+    "completionist": {
+      "weights": {"interactive_ratio": 0.7, "proximity_to_exit": 0.3}
+    }
+  }
+}

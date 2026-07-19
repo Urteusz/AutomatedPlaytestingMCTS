@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "md2-reconstructed-v1",
+  "frozen_on": "2026-07-19",
+  "maps": {
+    "map01": {
+      "layout": "map01.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "1d75e4e49cd453cf7759c4ae98328b7740b35ffc6063533935dc50d72ebfbcd7"
+    },
+    "map02": {
+      "layout": "map02.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "35b2dbe7a1ff0b164413bd7f106dd45bd7b1ba5369de3905c16f16014a0a678b"
+    },
+    "map03": {
+      "layout": "map03.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "8023127ec990acea2d0aa3dfcf39d268eb64969608248e041b8f65999449a720"
+    },
+    "map04": {
+      "layout": "map04.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "c172f5754bd7e672593475dc8757403aea6bc7fc259dde761a051c2877198b39"
+    },
+    "map05": {
+      "layout": "map05.txt", "rows": 14, "columns": 11,
+      "layout_sha256": "1f5201063254abef8db770af4e7873a78876721de4b6f0b3c997ce25626cd82f"
+    },
+    "map06": {
+      "layout": "map06.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "256d9e5205ab5c2a472c1a310dadefd7d50ce0efd2e3fffea8e236ad4a6dc2a3"
+    },
+    "map07": {
+      "layout": "map07.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "e44cd5f17461dfcf0b1ce2dec6c78bda206f80a3cad478d6bc6a527ef294a563"
+    },
+    "map08": {
+      "layout": "map08.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "235f14480cf922d39e3d061bfe6e10ced19d9af4428d4aa39cb68d894dd4b07d"
+    },
+    "map09": {
+      "layout": "map09.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "0f6e365a388d4d017a6369278a46aa74fb7e3f86bb849bc5f58cd232ce849b7a"
+    },
+    "map10": {
+      "layout": "map10.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "2857855e47cee3975ea65bfb234b1969dccfd462ea6758008891b953e1167523"
+    },
+    "map11": {
+      "layout": "map11.txt", "rows": 20, "columns": 10,
+      "layout_sha256": "a8e352ff9ed5c1b8c9a6da9997ba88ff5a88c8a1b257f70fe4d0a88d8080d47e"
+    }
+  }
+}
