@@ -20,15 +20,18 @@ Stan projektu:
 
 - deterministyczny silnik znajduje sie w `src/minidungeons/domain/engine.py`,
 - wykonywalne reguly i cztery persony sa zaimplementowane oraz przetestowane,
-- `GameService` udostepnia jeden interfejs dla REST, CLI i przyszlego MCTS,
-- opcjonalny adapter FastAPI udostepnia katalog map oraz sesje rozgrywki,
+- MCTS z UCB1 znajduje sie w `src/minidungeons/domain/mcts.py`, a eksperyment
+  wznawialny po przerwaniu w `src/minidungeons/cli/mcts_experiment.py`,
+- warstwa HTTP (FastAPI, `GameService`, sesje REST) zostala usunieta jako
+  nieuzywana przez MCTS; agent tworzy `MiniDungeon` bezposrednio,
 - lokalne artykuly znajduja sie w `docs/reference/articles/`,
 - zamrozony benchmark 11 map znajduje sie w `data/maps/md2/benchmark/`,
 - obrazy zrodlowe i siatki kontrolne sa w `data/maps/md2/source-images/`,
 - reguly sa opisane w `docs/rules/game-rules.md`, a parametry silnika i person
   w `data/rules/md2_rules.json` i `data/rules/personas.json`,
 - `map5_grid_11x14.png` potwierdza kompletna mape 11x14 jako jawny wyjatek,
-- nie ma jeszcze MCTS, ewolucji heurystyk, PPO, bazy wynikow ani warstwy analitycznej.
+- nie ma jeszcze ewolucji heurystyk, PPO, bazy wynikow ani warstwy analitycznej;
+  baseline UCB1 czeka na przeliczenie na pelnym zakresie 11 map i 4 person.
 
 Plan zaklada powolne, bezpieczne rozwijanie projektu: najpierw zgodne z artykulami srodowisko gry, potem MCTS, potem ewolucja heurystyk, potem PPO, a dopiero na koncu komplet wynikow i pisanie finalnych rozdzialow.
 
@@ -462,6 +465,7 @@ MiniDungeonsMCTS/
     maps/md2/benchmark/
     maps/md2/source-images/
     rules/
+    results/
   docs/
     architecture/
     project/
@@ -469,13 +473,11 @@ MiniDungeonsMCTS/
     rules/
   src/minidungeons/
     domain/
-    application/
     infrastructure/
-    api/
     cli/
   tests/
     domain/
-    application/
+    cli/
     data/
   tools/
   pyproject.toml
