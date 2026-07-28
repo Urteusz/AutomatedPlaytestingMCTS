@@ -8,15 +8,13 @@ safely by MCTS.
 from __future__ import annotations
 
 from collections import deque
-from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from heapq import heappop, heappush
 import json
 from pathlib import Path
 from typing import Iterable, Iterator
 
 from .rules import GameRules, PROJECT_ROOT, load_rules
-
 
 Coord = tuple[int, int]
 WALL, EMPTY, ENTRANCE, EXIT = "#", ".", "E", "X"
@@ -35,13 +33,12 @@ NPC_KIND_BY_SYMBOL = {
 SYMBOL_BY_NPC_KIND = {value: key for key, value in NPC_KIND_BY_SYMBOL.items()}
 ALLOWED_MAP_SYMBOLS = {WALL, EMPTY, ENTRANCE, *OBJECT_BY_SYMBOL, *NPC_KIND_BY_SYMBOL}
 
-
 DIRECTION_DELTA = {"N": (-1, 0), "E": (0, 1), "S": (1, 0), "W": (0, -1)}
 
 
 @dataclass(frozen=True, order=True)
 class Action:
-    """One Hero decision; deterministic NPC responses follow automatically."""
+    """Hero's action class, depending on the type, direction and target id."""
 
     kind: str
     direction: str | None = None
@@ -109,12 +106,12 @@ class MiniDungeon:
     DEFAULT_PORTAL_PAIRS_PATH = PROJECT_ROOT / "data" / "maps" / "md2" / "benchmark" / "portal_pairs.json"
 
     def __init__(
-        self,
-        map_path: str | Path,
-        *,
-        rules_path: str | Path | None = None,
-        portal_pairs_path: str | Path | None = None,
-        portal_pairs: Iterable[tuple[Coord, Coord]] | None = None,
+            self,
+            map_path: str | Path,
+            *,
+            rules_path: str | Path | None = None,
+            portal_pairs_path: str | Path | None = None,
+            portal_pairs: Iterable[tuple[Coord, Coord]] | None = None,
     ) -> None:
         self.map_path = Path(map_path).resolve()
         self.rules: GameRules = load_rules(rules_path)
@@ -141,7 +138,6 @@ class MiniDungeon:
             raise ValueError(f"Map contains unknown symbols: {unknown}")
 
         self.height, self.width = len(rows), len(rows[0])
-        self.grid = [list(row) for row in rows]
         terrain = [[EMPTY for _ in range(self.width)] for _ in range(self.height)]
         objects: dict[Coord, str] = {}
         npc_specs: list[tuple[str, Coord, int]] = []
@@ -176,9 +172,9 @@ class MiniDungeon:
         self._initial_completion_objects = self._initial_potions + self._initial_treasures + self._initial_killable_monsters
 
     def _load_portal_links(
-        self,
-        portal_pairs_path: str | Path | None,
-        explicit_pairs: Iterable[tuple[Coord, Coord]] | None,
+            self,
+            portal_pairs_path: str | Path | None,
+            explicit_pairs: Iterable[tuple[Coord, Coord]] | None,
     ) -> dict[Coord, Coord]:
         map_portals = {position for position, kind in self._object_template.items() if kind == "portal"}
         pairs: list[tuple[Coord, Coord]] = []
@@ -224,7 +220,16 @@ class MiniDungeon:
         return self.state()
 
     def clone(self) -> "MiniDungeon":
-        return deepcopy(self)
+        # Ręczna kopia zamiast deepcopy, aby ograniczyć czas potrzebny do przetworzenia kopia,
+        # Teren, reguły, portale i dystanse są niemutowalne, wiec klony je współdzielą,
+        # Kopiujemy tylko stan rozgrywki.
+        other = object.__new__(MiniDungeon)
+        other.__dict__.update(self.__dict__)
+        other.objects = dict(self.objects)
+        other.npcs = {npc_id: replace(npc) for npc_id, npc in self.npcs.items()}
+        other.metrics = replace(self.metrics)
+        other.last_events = list(self.last_events)
+        return other
 
     def state(self) -> dict[str, object]:
         npc_state = [
@@ -341,7 +346,7 @@ class MiniDungeon:
             events.extend(self._resolve_hero_npc_collision(occupant))
             occupant_after = self.npcs.get(occupant.npc_id)
             may_enter = occupant_after is None or (
-                occupant_after.kind == "minitaur" and occupant_after.stunned_actions > 0
+                    occupant_after.kind == "minitaur" and occupant_after.stunned_actions > 0
             )
             if not self.done and may_enter:
                 self.hero_position = target
@@ -399,12 +404,12 @@ class MiniDungeon:
         return events
 
     def _damage_npc(
-        self,
-        npc_id: int,
-        amount: int,
-        *,
-        source: str,
-        hero_credit: bool,
+            self,
+            npc_id: int,
+            amount: int,
+            *,
+            source: str,
+            hero_credit: bool,
     ) -> list[dict[str, object]]:
         npc = self.npcs.get(npc_id)
         if npc is None or amount <= 0:
@@ -584,7 +589,7 @@ class MiniDungeon:
         return self._move_npc_or_stay(npc, next_position, reason="no_path")
 
     def _move_npc_or_stay(
-        self, npc: NPC, next_position: Coord | None, *, reason: str,
+            self, npc: NPC, next_position: Coord | None, *, reason: str,
     ) -> list[dict[str, object]]:
         if next_position is None or next_position == npc.position:
             return [{"type": "npc_stay", "actor_id": npc.npc_id, "reason": reason}]
@@ -707,7 +712,7 @@ class MiniDungeon:
         return int(self.rules.value("monsters", npc.kind, "collision_damage"))
 
     def has_line_of_sight(
-        self, start: Coord, end: Coord, *, max_distance: int | None = None,
+            self, start: Coord, end: Coord, *, max_distance: int | None = None,
     ) -> bool:
         # widac tylko w linii prostej wzdluz wiersza lub kolumny
         distance = self._axis_distance(start, end)
@@ -741,8 +746,8 @@ class MiniDungeon:
             blocked = {
                 npc.position for npc in self.npcs.values()
                 if npc.npc_id != actor_id
-                and npc.kind in {"goblin", "wizard"}
-                and npc.position != goal
+                   and npc.kind in {"goblin", "wizard"}
+                   and npc.position != goal
             }
         if self.hero_position != goal:
             blocked.add(self.hero_position)

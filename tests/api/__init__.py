@@ -1,1 +1,0 @@
-"""Optional HTTP adapter tests."""
