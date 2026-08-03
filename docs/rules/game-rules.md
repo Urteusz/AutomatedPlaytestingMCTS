@@ -1,1035 +1,445 @@
-# MiniDungeons 2 - baza wiedzy o zasadach gry
-
-Zrodla lokalne:
-
-- `docs/reference/articles/1802.06881v1_MCTS.pdf` - zrodlo eksperymentu: persony, metryki, MCTS, ewoluowane heurystyki, zestaw 11 map i protokol badan.
-- `docs/reference/articles/minidungeons_2.pdf` - zrodlo zasad gry: opis silnika MiniDungeons 2, obiektow, przeciwnikow, oszczepu, portali i kolejnosci tur.
-
-Status implementacji (2026-07-19): parametry silnika sa w
-`data/rules/md2_rules.json`, wagi person w `data/rules/personas.json`,
-a rozstrzygniecia niejednoznacznosci w `docs/rules/ambiguity-resolutions.md`.
-Wykonuje je `src/minidungeons/domain/engine.py`, a
-`docs/rules/implementation-decisions.md` oddziela reguly zrodlowe od decyzji
-rekonstrukcyjnych. Sformułowania „decyzja do przyjęcia” w dalszej części tego
-dokumentu należy czytać jako historię analizy; finalny wybór zapisuje JSON.
-
-Cel dokumentu: zebrac w jednym miejscu wszystkie zasady gry MiniDungeons 2 opisane w artykule, oddzielic je od rzeczy niewyjasnionych oraz wskazac, ktore decyzje implementacyjne mozemy przyjac samodzielnie bez niszczenia sensu eksperymentu.
+# MiniDungeons 2 — zasady gry
+
+Baza wiedzy o logice gry i pomiarach. Warstwa wizualna nie musi być odtworzona
+1:1, jeśli zachowana jest logika kafli, obiektów, przeciwników i metryk.
+
+## Źródła i podział odpowiedzialności
+
+| Plik | Odpowiada na pytanie |
+| --- | --- |
+| `docs/reference/articles/minidungeons_2.pdf` | jak działa gra: obiekty, przeciwnicy, oszczep, portale, kolejność tur |
+| `docs/reference/articles/1802.06881v1_MCTS.pdf` | jak autorzy badali persony: metryki (Table I), 11 map, protokół MCTS |
+
+W razie konfliktu dla eksperymentu ważniejszy jest artykuł MCTS — dlatego
+bohater startuje z 10 HP, a nie z zakresu 1–10 HP z opisu MD2.
+
+Ten dokument jest w trybie twierdzącym: opisuje, jak gra działa w tej
+implementacji. Miejsca, w których publikacje milczą, są rozstrzygnięte
+w `docs/rules/decisions.md` — każda sekcja odsyła do właściwych
+identyfikatorów decyzji. Wartości liczbowe wykonuje
+`data/rules/md2_rules.json`, a `src/minidungeons/domain/engine.py` jest
+ostatecznym źródłem prawdy o zachowaniu.
+
+## 1. Model gry
+
+MiniDungeons 2 jest deterministyczną, turową, jednoosobową grą roguelike
+na siatce kafli. Bohater przechodzi przez poziom, a celem jest dotarcie
+do wyjścia.
 
-Ten dokument dotyczy logiki gry i pomiarow. Warstwa wizualna nie musi byc odtworzona 1:1, jesli zachowana jest logika kafli, obiektow, przeciwnikow, metryk i eksperymentow.
+Konsekwencje dla implementacji:
+
+- ten sam stan i ta sama akcja dają ten sam kolejny stan;
+- losowość występuje wyłącznie w agentach (rollout MCTS), nigdy w regułach gry;
+- stan musi być klonowalny, bo MCTS symuluje przyszłość;
+- stany terminalne to zwycięstwo i śmierć; timeout jest warunkiem eksperymentu,
+  nie regułą gry.
+
+## 2. Plansza i kafle
+
+- plansza ma 10 kolumn i 20 wierszy; `map05` jest jawnym wyjątkiem 11 × 14,
+  potwierdzonym siatką kontrolną (`docs/benchmark.md`);
+- każdy kafel jest ścianą albo polem przechodnim;
+- kafel przechodni ma warstwę terenu oraz opcjonalnie warstwę obiektu
+  i warstwę postaci;
+- obiekty gry to skarby, mikstury, portale, pułapki i wyjście;
+- obiekty podłogowe nie blokują ruchu; postacie blokują, o ile reguła kolizji
+  nie mówi inaczej;
+- 11 map jest stałym zestawem testowym, nie są generowane proceduralnie.
+
+Format tekstowy i symbole opisuje `docs/benchmark.md`.
+
+## 3. Zwycięstwo i porażka
+
+- bohater wygrywa natychmiast po wejściu na wyjście; NPC nie odpowiadają
+  w tej turze;
+- bohater przegrywa, gdy jego HP spadnie do 0 lub mniej;
+- jeśli HP spadnie do zera przed wejściem na wyjście, gra kończy się śmiercią.
 
-## 1. Status informacji
+Decyzje: `terminal_turn_order`.
 
-W dokumencie uzywane sa trzy statusy:
+## 4. HP i obrażenia
 
-- **Opisane wprost** - artykul jasno podaje zasade.
-- **Widoczne w artykule** - informacja jest dostepna z rysunkow, np. mapy w Fig. 2, ale nie jako plik danych.
-- **Nieokreslone** - artykul wspomina element, ale nie daje pelnej reguly implementacyjnej.
-
-Najwazniejszy wniosek:
+Wszystkie postacie mają HP z wyjątkiem Minitaura. To jedyna tabela parametrów
+w tym dokumencie — wartości wykonywalne są w `data/rules/md2_rules.json`.
 
-- Da sie odtworzyc system badawczy i sens porownania metod.
-- Nie da sie zagwarantowac identycznych liczb jak u autorow bez oryginalnego kodu i plikow map.
-- W miejscach nieokreslonych nalezy przyjac deterministyczne reguly implementacyjne i opisac je w pracy.
+| Postać / obiekt | HP | Obrażenia | Uwagi |
+| --- | ---: | ---: | --- |
+| Bohater | 10 (maks. 10) | 1 przez kolizję, 1 oszczepem | brak osobnej akcji melee |
+| Goblin | 1 | 1 przy kolizji | |
+| Wizard | 1 | 1 zaklęciem z zasięgu ≤ 5 | nie zadaje obrażeń przy kolizji |
+| Blob poziom 1 | 1 | 1 | obrażenie zabija |
+| Blob poziom 2 | 2 | 2 | obrażenie obniża poziom o 1 |
+| Blob poziom 3 | 3 | 3 | poziom maksymalny |
+| Ogr | 2 | 2 | rani również inne ogry |
+| Minitaur | brak | 1 przy kolizji | nie ginie; obrażenie ogłusza na 3 jego akcje |
+| Pułapka | — | 1 każdej wchodzącej postaci | nie znika po aktywacji |
+| Mikstura | — | leczy bohatera o 1 do maks. 10 | blob usuwa ją bez leczenia |
+| Oszczep | — | 1 | |
 
-## 1.1. Co dopowiada artykul MiniDungeons 2
+Śmierć postaci po obrażeniach rozpatrujemy natychmiast. Kolizja bohatera
+z potworem oznacza, że bohater zadaje 1 obrażenie, a potwór zadaje swoje,
+jeśli jego typ ma obrażenia kolizyjne. Obrażenia są jednoczesne.
 
-`minidungeons_2.pdf` jest bardzo wazny, bo nie opisuje wynikow MCTS, tylko bazowe zasady gry. Po jego dodaniu czesc rzeczy przestaje byc nieznana:
+Decyzje: `hero_start_hp`, `collision_timing`.
 
-- plansza ma 10x20 kafli,
-- kafle sa scianami albo kaflami przechodnimi,
-- kafel przechodni moze zawierac obiekt i/lub postac,
-- poziom konczy sie po dotarciu bohatera do wyjscia albo smierci bohatera,
-- bohater rusza sie pierwszy, potem obiekty i postacie odpowiadaja deterministycznie w sekwencji,
-- bohater ma jeden oszczep,
-- bohater zadaje 1 obrazenie przez kolizje albo rzut oszczepem,
-- oszczep mozna rzucic w dowolna inna postac w nieprzerwanym line of sight,
-- oszczep zostaje na kaflu, na ktory zostal rzucony, i bohater musi tam dojsc, zeby go odzyskac,
-- portale dzialaja dla "character", czyli dla postaci, nie tylko dla bohatera,
-- portal natychmiast przenosi na sparowany portal w tej samej turze,
-- goblin idzie 1 krok w strone bohatera po najkrotszej sciezce, jesli ma line of sight,
-- wizard zadaje 1 obrazenie z dystansu w line of sight do 5 kafli, w innym przypadku idzie 1 krok w strone bohatera,
-- blob wybiera najblizszego widocznego bohatera albo potion, a przy remisie preferuje potion,
-- blob zadaje obrazenia postaciom nie-bedacym blobami, laczy sie z innymi blobami i traci poziom mocy po otrzymaniu obrazen,
-- ogre wybiera najblizszego widocznego bohatera albo skarb, a przy remisie preferuje skarb,
-- Minitaur zawsze idzie po najkrotszej sciezce A* do bohatera, ignorujac inne postacie i obiekty,
-- Minitaur nie ma HP, nie ginie i po otrzymaniu obrazen jest ogluszony na 3 rundy.
+## 5. Tura i kolejność ruchu
 
-Wazna niespojnosc miedzy zrodlami:
+- bohater wykonuje pierwszy ruch w każdej turze;
+- po nim NPC odpowiadają deterministycznie;
+- kolejność NPC wynika z ich **początkowej** pozycji na mapie, wierszami
+  od lewego górnego rogu, i nie zmienia się, gdy NPC później się przemieszczą;
+- martwe NPC są usuwane przed swoją kolejką;
+- scalony blob przejmuje niższy indeks kolejki z łączących się blobów;
+- ogłuszony Minitaur pozostaje w kolejce, ale jego akcją jest brak ruchu;
+- jeśli gra jest terminalna po ruchu bohatera, NPC nie ruszają się.
 
-- `minidungeons_2.pdf` pisze, ze bohater zaczyna poziom z 1-10 HP.
-- `1802.06881v1_MCTS.pdf` w eksperymencie MCTS przyjmuje start z 10 HP.
-- Dla tej pracy wazniejszy jest eksperyment MCTS, wiec implementacja badawcza powinna startowac z 10 HP. Niespojnosc trzeba opisac w pracy jako decyzje reprodukcyjna.
+Decyzje: `blob_merge_and_turn_order`, `terminal_turn_order`.
 
-## 2. Czego nie wolno zmienic, bo tworzy clue eksperymentu
+## 6. Ruch
 
-Te elementy sa krytyczne dla sensu pracy:
+- postać porusza się o 1 kafel w jednym z czterech kierunków;
+- kolejność rozpatrywania sąsiadów to **N, E, S, W** — to tie-break dla
+  równych ścieżek;
+- ruch w ścianę lub poza planszę jest akcją **nielegalną**, nie akcją bez
+  efektu — takie ruchy nie pojawiają się na liście legalnych akcji;
+- postać wchodząca na portal jest natychmiast teleportowana do sparowanego
+  portalu w tej samej turze;
+- wyjście jest interaktywne tylko dla bohatera;
+- portale działają dla wszystkich postaci, ale metrykę `TU` liczymy wyłącznie
+  dla użyć bohatera.
 
-- cztery persony: Runner, Monster Killer, Treasure Collector, Completionist,
-- funkcje uzytecznosci person z artykulu,
-- metryki rozgrywki z Table I,
-- podzial map: trening GP na mapach 1, 2, 3, 4, 7, 10; test na wszystkich 11 mapach,
-- porownanie MCTS-UCB1 z MCTS z ewoluowana polityka drzewa,
-- dodanie RL/PPO jako metody porownawczej z tego samego tematu pracy,
-- ta sama logika celu gry: dojscie do wyjscia,
-- smierc po spadku HP do zera,
-- turowosc i deterministycznosc srodowiska,
-- rozne typy obiektow i przeciwnikow,
-- wyniki w formie metryk jak w artykule.
+Decyzje: `equal_path_tie_break`, `illegal_move`, `npc_exit_behavior`.
 
-## 3. Co mozna zdefiniowac samodzielnie
+## 7. Linia wzroku
 
-Te elementy moga zostac przyjete jako nasze reguly implementacyjne, jesli sa deterministyczne i opisane:
+- linia wzroku działa **tylko w czterech kierunkach osiowych**;
+- blokują ją wyłącznie ściany;
+- postacie i obiekty jej nie blokują;
+- dystans liczymy liczbą kafli w osi.
 
-- symbole w plikach map,
-- format pliku mapy,
-- format eksportu wynikow,
-- sposob rysowania map i heatmap,
-- tie-breakery ruchu,
-- szczegoly rzadkich kolizji nieopisanych w artykule,
-- sposob wyboru jednej z kilku rownych sciezek A*,
-- kolejnosc rozpatrywania akcji o tej samej ocenie,
-- reprezentacja obserwacji dla PPO,
-- szczegoly UI albo brak UI.
+To jedna z najważniejszych decyzji rekonstrukcyjnych, bo wpływa na ruch
+wszystkich przeciwników i na dostępność rzutu oszczepem.
 
-## 4. Ogolny model gry
+Decyzje: `line_of_sight_geometry`.
 
-Status: **opisane wprost**.
+## 8. Bohater
 
-MiniDungeons 2 jest:
+- jest postacią gracza i wykonuje pierwszy ruch w turze;
+- zaczyna z 10 HP i jednym wielorazowym oszczepem;
+- jego celem jest dotarcie do wyjścia;
+- akcje bohatera to ruchy oraz rzut oszczepem, gdy oszczep jest dostępny
+  i cel jest w linii wzroku;
+- rzut zużywa akcję bohatera w turze;
+- nie ma osobnego przycisku ataku wręcz — atak wynika z kolizji;
+- nie ma akcji czekania.
 
-- deterministyczna gra,
-- gra turowa,
-- gra roguelike,
-- gra jednoosobowa,
-- gra na siatce kafli,
-- gra z bohaterem przechodzacym przez poziom,
-- gra z celem dotarcia do wyjscia.
+Decyzje: `wait_action`, `illegal_move`.
 
-Konsekwencje implementacyjne:
+## 9. Oszczep
 
-- ten sam stan i ta sama akcja musza dawac ten sam kolejny stan,
-- element losowy moze wystepowac w agentach, np. rollout MCTS, ale nie powinien wynikac z zasad gry,
-- srodowisko musi pozwalac na klonowanie stanu, bo MCTS wykonuje symulacje przyszlosci,
-- srodowisko musi jasno rozpoznawac stany terminalne: zwyciestwo, smierc, timeout eksperymentu.
+- bohater dostaje jeden wielorazowy oszczep na początku każdego poziomu;
+- oszczep zadaje 1 obrażenie dowolnej innej postaci w nieprzerwanej,
+  osiowej linii wzroku;
+- inne postacie **nie zasłaniają** celu;
+- oszczep ląduje na aktualnym kaflu wybranego celu i zostaje tam także wtedy,
+  gdy cel zginie;
+- bohater podnosi oszczep automatycznie po wejściu na jego kafel;
+- rzut liczy się do metryki `JT`, ale **nie** do liczby kroków `ST`.
 
-## 5. Plansza i kafle
+Artykuł zauważa, że gra może być nieskończona: gracz może chodzić w tę i we
+w tę, wciąż radząc sobie z Minitaurem oszczepem. Dlatego eksperyment potrzebuje
+jawnego limitu czasu.
 
-Status: **opisane wprost / widoczne w artykule**.
+Decyzje: `javelin_details`.
 
-Z artykulu:
+## 10. Obiekty podłogowe
 
-- plansza ma rozmiar 10x20,
-- kazdy kafel jest albo sciana, albo przechodnim polem,
-- na przechodnim polu moze znajdowac sie obiekt,
-- na przechodnim polu moze znajdowac sie postac,
-- na przechodnim polu moze nie byc niczego,
-- obiekty gry to m.in. skarby, mikstury, portale, pulapki i wyjscie.
+### 10.1. Wyjście
 
-Widoczne w artykule:
+Cel poziomu. Wejście bohatera kończy grę zwycięstwem. Dla NPC jest neutralnym
+polem przechodnim.
 
-- Fig. 2 pokazuje wszystkie 11 map,
-- mapy sa staly zestawem testowym,
-- mapy nie sa generowane proceduralnie podczas eksperymentu,
-- Fig. 3 pokazuje liczbe typow obiektow interaktywnych na mapach.
+### 10.2. Mikstura
+
+Leczy bohatera o 1 HP, nie pozwalając przekroczyć 10. Jest konsumowana przez
+bohatera i przez bloba — blob usuwa ją, ale się nie leczy. Pozostałe NPC ją
+ignorują. Po konsumpcji nie może zostać użyta ponownie. Nie blokuje ruchu.
+
+### 10.3. Skarb
 
-Nieokreslone:
+Zwiększa wynik skarbów bohatera. Jest konsumowany przez bohatera i przez ogra.
+Ogr po zjedzeniu skarbu zmienia sprite — zmiana jest czysto wizualna, bez
+efektu mechanicznego. Pozostałe NPC ignorują skarb. Nie blokuje ruchu.
 
-- oryginalny format plikow map,
-- dokladne symbole kafli,
-- dokladne dane map jako tekst,
-- czy na jednym kaflu moze byc wiecej niz jedna postac poza specjalnymi kolizjami.
-
-Decyzja implementacyjna do przyjecia:
-
-- uzywamy tekstowego formatu map,
-- przepisujemy logike 11 map z Fig. 2,
-- kazdy kafel ma warstwe terenu oraz opcjonalnie warstwe obiektu i warstwe postaci,
-- postacie domyslnie blokuja pole, chyba ze reguly specjalne mowia inaczej.
-
-## 6. Warunki zwyciestwa i porazki
-
-Status: **opisane wprost**.
-
-Zwyciestwo:
-
-- gracz wygrywa po dotarciu bohatera do wyjscia.
-
-Porazka:
-
-- bohater przegrywa, gdy skoncza mu sie HP,
-- bohater zaczyna z 10 HP,
-- smierc nastepuje po spadku HP do 0 lub mniej.
-
-Nieokreslone:
-
-- czy zwyciestwo ma pierwszenstwo przed smiercia, jesli oba zdarzenia wystapia w tej samej turze,
-- czy wejscie na wyjscie natychmiast konczy ture przed ruchem NPC,
-- czy timeout eksperymentu jest stanem gry, czy tylko przerwaniem agenta.
-
-Decyzja implementacyjna do przyjecia:
-
-- wejscie bohatera na wyjscie natychmiast konczy gre zwyciestwem,
-- jesli HP bohatera spadnie do 0 przed wejsciem na wyjscie, gra konczy sie smiercia,
-- timeout nie jest regula gry, tylko warunkiem eksperymentu.
-
-## 7. HP i obrazenia
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- wszystkie postacie maja HP, z wyjatkiem Minitaura, ktory nie ma HP,
-- postacie moga zadawac obrazenia,
-- bohater startuje z 10 HP w eksperymencie MCTS z `1802.06881v1_MCTS.pdf`,
-- bazowy opis MD2 z `minidungeons_2.pdf` dopuszcza start bohatera z 1-10 HP,
-- potion leczy bohatera o 1 HP do maksimum 10,
-- pulapka zadaje 1 obrazenie kazdej postaci, ktora przez nia przechodzi,
-- bohater zadaje 1 obrazenie innym postaciom przez kolizje,
-- goblin ma 1 HP i zadaje 1 obrazenie przy kolizji,
-- wizard ma 1 HP i zadaje 1 obrazenie zakleciem,
-- wizard nie zadaje obrazen przez kolizje,
-- blob poziomu 1 ma 1 HP i zadaje 1 obrazenie,
-- blob poziomu 2 ma 2 HP i zadaje 2 obrazenia,
-- blob poziomu 3 ma 3 HP i zadaje 3 obrazenia,
-- ogre ma 2 HP i zadaje 2 obrazenia,
-- Minitaur zadaje 1 obrazenie przy kolizji,
-- oszczep zadaje 1 obrazenie innej postaci.
-
-Nieokreslone:
-
-- czy postac moze zginac od pulapki podczas swojej tury i czy wtedy znika natychmiast,
-- czy potwor po otrzymaniu smiertelnych obrazen zadaje jeszcze obrazenia w tej samej kolizji.
-
-Decyzja implementacyjna do przyjecia:
-
-- kolizja bohatera z potworem oznacza, ze bohater zadaje 1 obrazenie, a potwor zadaje swoje obrazenia, jesli jego typ ma obrazenia kolizyjne,
-- dla eksperymentu startowe HP bohatera ustawiamy na 10,
-- smierc postaci po obrazeniach rozpatrujemy natychmiast,
-- dla kazdej kolizji zapisujemy event do metryk.
-
-## 8. Tura i kolejnosc ruchu
-
-Status: **opisane wprost**.
-
-Z artykulu:
-
-- gracz wykonuje pierwszy ruch w kazdej turze,
-- po graczu obiekty i postacie odpowiadaja deterministycznie,
-- w praktyce dla implementacji najwazniejsze sa reakcje NPC,
-- NPC ruszaja sie wedlug swojej pierwotnej pozycji na mapie,
-- kolejnosc NPC idzie od lewego gornego rogu,
-- kolejnosc jest wierszami od lewej do prawej,
-- kolejnosc poczatkowa zostaje zachowana nawet wtedy, gdy NPC pozniej zmieniaja pozycje.
-
-Nieokreslone:
-
-- czy NPC, ktory zginal przed swoja kolejka, jest pomijany natychmiast,
-- czy nowy blob powstaly po zlaczeniu zachowuje kolejke jednego z blobow,
-- jak traktowac NPC, ktory zostal ogluszony,
-- czy NPC wykonuje akcje po tym, jak bohater juz wygral w tej turze.
-
-Decyzja implementacyjna do przyjecia:
-
-- jesli gra jest terminalna po ruchu bohatera, NPC nie ruszaja sie,
-- martwe NPC sa usuwane przed ich kolejka,
-- scalony blob przejmuje nizszy indeks kolejki z laczacych sie blobow,
-- ogluszony Minitaur pozostaje w kolejce, ale jego akcja to brak ruchu.
-
-## 9. Ruch
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- postac moze poruszyc sie o 1 kafel,
-- kierunki ruchu to North, South, East, West,
-- ruch jest dozwolony, jesli kafel w tym kierunku nie jest sciana,
-- kafel przechodni moze zawierac obiekt i/lub postac,
-- postac wchodzaca w portal jest natychmiast teleportowana do sparowanego portalu.
-
-Nieokreslone:
-
-- czy ruch poza plansze jest akcja nielegalna czy no-op,
-- czy postac moze wejsc na kafel zajety przez inna postac,
-- czy postac moze wejsc na portal, pulapke, potion, skarb, wyjscie,
-- czy NPC moga wejsc na wyjscie,
-- czy obiekty podlogowe blokuja ruch.
-
-Decyzja implementacyjna do przyjecia:
-
-- legalne akcje bohatera nie zawieraja ruchu w sciane ani poza plansze,
-- obiekty podlogowe nie blokuja ruchu,
-- postacie blokuja ruch, chyba ze dana kolizja jest celowa albo specjalna,
-- portal dziala dla wszystkich postaci, ale `TU` liczymy tylko dla uzyc bohatera,
-- wyjscie jest interaktywne tylko dla bohatera.
-
-## 10. Line of sight
-
-Status: **wspomniane, ale nie zdefiniowane szczegolowo**.
-
-Z artykulu:
-
-- oszczep moze trafic potwora w nieprzerwanym line of sight,
-- goblin podaza za bohaterem, jesli ma nieprzerwany line of sight,
-- wizard atakuje lub podchodzi, jesli ma line of sight,
-- blob reaguje na potion lub bohatera, jesli ma line of sight,
-- ogre reaguje na skarb lub bohatera, jesli ma line of sight.
-
-Nieokreslone:
-
-- czy line of sight dziala tylko w czterech kierunkach,
-- czy line of sight dziala po przekatnych,
-- czy line of sight moze isc po dowolnej prostej,
-- czy sciany sa jedynymi blokerami widzenia,
-- czy NPC blokuja widzenie,
-- czy obiekty blokuja widzenie,
-- czy pulapki i portale blokuja widzenie,
-- czy dystans wizardow liczony jest Manhattanem, Euklidesowo, czy po linii widzenia.
-
-Decyzja implementacyjna do przyjecia:
-
-- line of sight dziala w czterech kierunkach osiowych,
-- sciany blokuja line of sight,
-- postacie i obiekty nie blokuja line of sight,
-- dystans w line of sight liczony jest liczba kafli w osi.
-
-Uwaga:
-
-- To jest jedna z wazniejszych decyzji implementacyjnych, bo wplywa na ruch przeciwnikow i uzycie oszczepu.
-
-## 11. Bohater
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- bohater jest postacia gracza,
-- zaczyna z 10 HP,
-- celem bohatera jest dotarcie do wyjscia,
-- bohater wykonuje pierwszy ruch w turze,
-- bohater moze poruszac sie w czterech kierunkach,
-- bohater dostaje jeden wielorazowy oszczep na poczatku poziomu,
-- bohater zadaje 1 obrazenie innym postaciom przy kolizji,
-- bohater zadaje 1 obrazenie innym postaciom rzutem oszczepem.
-
-Nieokreslone:
-
-- czy bohater moze czekac,
-- czy bohater moze rzucic oszczepem jako akcja zamiast ruchu,
-- czy rzut oszczepem konczy ture bohatera,
-- czy bohater moze przejsc przez innych przeciwnikow bez walki.
-
-Decyzja implementacyjna do przyjecia:
-
-- akcje bohatera to ruchy oraz rzut oszczepem, gdy oszczep jest dostepny i cel jest w line of sight,
-- rzut oszczepem zuzywa akcje bohatera w turze,
-- bohater nie ma osobnego przycisku melee; atak melee wynika z kolizji.
-
-## 12. Oszczep
-
-Status: **opisane wprost / czesciowo nieokreslone w szczegolach**.
-
-Z artykulu:
-
-- bohater dostaje jeden wielorazowy oszczep na poczatku kazdego poziomu,
-- bohater moze rzucic oszczepem,
-- oszczep zadaje 1 obrazenie dowolnej innej postaci w nieprzerwanym line of sight,
-- po uzyciu oszczepu bohater musi przejsc na kafel, na ktory oszczep zostal rzucony, aby go podniesc i uzyc ponownie,
-- oszczep pozostaje na kaflu, na ktory zostal rzucony,
-- gra moze byc nieskonczona, bo gracz moze poruszac sie w te i z powrotem i ciagle radzic sobie z Minitaurem oszczepem.
-
-Nieokreslone:
-
-- czy po zabiciu potwora oszczep zostaje na tym samym polu,
-- czy oszczep moze przeleciec przez potwora,
-- czy oszczep moze trafic tylko pierwszego potwora w linii,
-- czy oszczep moze byc rzucony na puste pole,
-- czy oszczep moze lezec na polu z obiektem,
-- czy NPC moga wejsc na oszczep,
-- czy bohater automatycznie podnosi oszczep po wejsciu na jego kafel,
-- czy rzut oszczepem jest liczony jako krok.
-
-Decyzja implementacyjna do przyjecia:
-
-- oszczep mozna rzucic tylko w inna postac widoczna w osiowym line of sight,
-- oszczep trafia wybrana postac i laduje na jej aktualnym kaflu,
-- jesli potwor ginie, oszczep zostaje na tym kaflu,
-- bohater automatycznie podnosi oszczep po wejsciu na kafel oszczepu,
-- rzut oszczepem liczymy jako akcje i metryke `JT`, ale nie jako krok ruchu `ST`.
-
-## 13. Obiekty podlogowe
-
-### 13.1. Wyjscie
-
-Status: **opisane wprost**.
-
-Z artykulu:
-
-- wyjscie jest celem poziomu,
-- gracz wygrywa po dotarciu do wyjscia.
-
-Nieokreslone:
-
-- czy NPC moga wejsc na wyjscie,
-- czy wyjscie blokuje ruch NPC,
-- czy wyjscie ma dodatkowy efekt dla obiektow.
-
-Decyzja implementacyjna:
-
-- wyjscie dziala tylko dla bohatera,
-- dla NPC jest zwyklym przechodnim polem albo polem neutralnym, zaleznie od wygody implementacji; nalezy wybrac jedna wersje i opisac.
-
-### 13.2. Potion
-
-Status: **opisane wprost**.
-
-Z artykulu:
-
-- potion zwieksza HP bohatera o 1,
-- potion nie pozwala przekroczyc 10 HP,
-- potion jest konsumowany przez bohatera,
-- potion jest konsumowany przez bloba,
-- po konsumpcji potion nie moze zostac uzyty ponownie.
-
-Nieokreslone:
-
-- czy inne NPC niz blob moga wejsc na potion,
-- czy potion blokuje ruch,
-- czy blob po zjedzeniu potiona leczy sie albo tylko go usuwa.
-
-Decyzja implementacyjna:
-
-- potion nie blokuje ruchu,
-- bohater leczy sie o 1,
-- blob usuwa potion bez leczenia, jesli artykul nie mowi inaczej,
-- inne NPC ignoruja potion.
-
-### 13.3. Treasure
-
-Status: **opisane wprost**.
-
-Z artykulu:
-
-- treasure zwieksza treasure score bohatera,
-- treasure jest konsumowany przez bohatera,
-- treasure jest konsumowany przez ogre,
-- po konsumpcji treasure nie moze zostac uzyty ponownie,
-- ogre po zjedzeniu skarbu zmienia sprite na ladniejszy.
-
-Nieokreslone:
-
-- czy zmiana sprite ma efekt mechaniczny,
-- czy inne NPC niz ogre moga wejsc na treasure,
-- czy treasure blokuje ruch.
-
-Decyzja implementacyjna:
-
-- treasure nie blokuje ruchu,
-- zmiana sprite ogre nie ma efektu mechanicznego,
-- inne NPC ignoruja treasure.
-
-### 13.4. Portal
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- portale wystepuja parami,
-- gdy postac wchodzi w portal, zostaje natychmiast przeniesiona do drugiego portalu,
-- teleportacja dzieje sie w tej samej turze,
-- siedem map zawiera zestaw portali dajacych skroty przez poziom.
-
-Nieokreslone:
-
-- czy para portali jest jednoznaczna wizualnie w Fig. 2,
-- czy moze byc wiecej niz jedna para portali na mapie,
-- czy teleportacja moze przeniesc bohatera na zajety kafel,
-- czy po teleportacji rozpatrywane sa obiekty na kaflu docelowym,
-- czy wejscie na portal liczy sie jako `TU`,
-- czy teleportacja liczy sie jako dodatkowy krok.
-
-Decyzja implementacyjna:
-
-- portale dzialaja dla bohatera i NPC,
-- wejscie bohatera na portal zwieksza `TU`,
-- teleportacja nie zwieksza `ST` poza ruchem wejscia na portal,
-- pole docelowe portalu nie moze byc sciana,
-- jesli pole docelowe jest zajete, nalezy zdefiniowac blokade albo kolizje.
-
-### 13.5. Trap
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- trap zadaje 1 obrazenie kazdej postaci wchodzacej na jej kafel,
-- obrazenia sa zadawane za kazdym razem,
-- szesc map zawiera jedna lub wiecej pulapek.
-
-Nieokreslone:
-
-- czy trap dziala takze przy opuszczeniu kafla, czy tylko przy wejsciu,
-- czy trap dziala na latajacy/rzucany oszczep,
-- czy trap znika po aktywacji,
-- czy trap moze zabic NPC,
-- czy trap dziala na Minitaura, skoro nie ma HP.
-
-Decyzja implementacyjna:
-
-- trap dziala przy wejsciu postaci na kafel,
-- trap nie znika,
-- trap zadaje obrazenia bohaterowi i NPC z HP,
-- Minitaur moze zostac ogluszony albo zignorowac trap; trzeba wybrac jedna wersje.
-
-## 14. Przeciwnicy
-
-### 14.1. Goblin / Melee Goblin
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- goblin porusza sie o 1 kafel w kazdej turze,
-- porusza sie w strone bohatera po najkrotszej sciezce,
-- rusza sie tylko wtedy, gdy ma nieprzerwany line of sight do bohatera,
-- ma 1 HP,
-- zadaje 1 obrazenie przy kolizji,
-- unika kolizji z innymi goblinami i goblin wizardami.
-
-Nieokreslone:
-
-- jak goblin wybiera kierunek, gdy ma kilka ruchow przyblizajacych do bohatera,
-- czy goblin moze kolidowac z blobem, ogre, Minitaurem,
-- co znaczy dokladnie "unika kolizji": wybiera inny ruch, stoi, czy przechodzi przez cel.
-
-Decyzja implementacyjna:
-
-- goblin rusza sie po najkrotszej sciezce do bohatera, ale tylko gdy ma line of sight,
-- jesli ruch docelowy jest zablokowany przez goblina lub wizarda, goblin nie rusza sie,
-- kolizja z bohaterem zadaje bohaterowi 1 obrazenie.
-
-### 14.2. Goblin Wizard / Ranged Goblin
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- wizard rzuca zaklecie w bohatera, jesli ma nieprzerwany line of sight w zasiegu 5 kafli,
-- zaklecie zadaje 1 obrazenie,
-- w przeciwnym razie rusza sie o 1 kafel w strone bohatera,
-- wizard ma 1 HP,
-- wizard nie zadaje obrazen przez kolizje.
-
-Nieokreslone:
-
-- czy zasieg 5 jest liczony wlacznie czy wylacznie,
-- jak liczony jest dystans,
-- czy zaklecie przechodzi przez inne NPC,
-- czy wizard moze poruszyc sie po rzuceniu zaklecia,
-- czy ruch "otherwise" wymaga line of sight, czy wizard idzie do bohatera takze bez line of sight,
-- co dzieje sie przy kolizji bohatera z wizardem.
-
-Decyzja implementacyjna:
-
-- zasieg 5 jest liczony wlacznie,
-- dystans liczony jest po osi line of sight,
-- wizard albo rzuca zaklecie, albo sie rusza, nigdy oba w tej samej turze,
-- kolizja z wizardem nie zadaje obrazen bohaterowi, ale moze pozwalac na usuniecie wizarda zgodnie z przyjeta regula walki.
-
-### 14.3. Blob
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- blob nie rusza sie, jesli nie widzi potiona ani bohatera,
-- blob reaguje na potion albo bohatera w line of sight,
-- blob rusza sie o 1 kafel w strone najblizszego widocznego celu,
-- w remisie preferuje potion przed bohaterem,
-- blob po kolizji z potionem konsumuje potion,
-- blob po kolizji z innym blobem scala sie w silniejszego bloba,
-- blob poziomu 1 ma 1 HP i zadaje 1 obrazenie,
-- blob poziomu 2 ma 2 HP i zadaje 2 obrazenia,
-- blob poziomu 3 ma 3 HP i zadaje 3 obrazenia,
-- blob zadaje obrazenia kolidujacej postaci, ktora nie jest blobem,
-- silniejszy blob po otrzymaniu obrazen traci jeden poziom mocy.
-
-Nieokreslone:
-
-- co jesli blob widzi kilka potionow w tej samej odleglosci,
-- co jesli blob widzi kilka sciezek do tego samego celu,
-- czy blob moze scalac sie powyzej poziomu 3,
-- ktory blob znika po scaleniu,
-- jaki indeks kolejki ma scalony blob,
-- czy blob leczy sie po zjedzeniu potiona,
-- czy blob moze wejsc na treasure, portal, trap, exit.
-
-Decyzja implementacyjna:
-
-- blob ma maksymalnie poziom 3,
-- dwa bloby scalaja sie do poziomu `min(3, level_a + level_b)`,
-- scalony blob zostaje na kaflu kolizji,
-- otrzymanie obrazen przez blob poziomu 2 lub 3 obniza poziom o 1,
-- otrzymanie obrazen przez blob poziomu 1 zabija bloba,
-- nie leczy sie od potiona, tylko go usuwa,
-- przy rownych celach wybiera cel w stalej kolejnosc N, S, E, W albo wedlug indeksu kafla; nalezy wybrac jedna wersje.
-
-### 14.4. Ogre
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- ogre nie rusza sie, jesli nie widzi skarbu ani bohatera,
-- ogre reaguje na skarb albo bohatera w line of sight,
-- ogre rusza sie o 1 kafel w strone najblizszego celu,
-- w remisie preferuje skarb przed bohaterem,
-- ogre po kolizji ze skarbem konsumuje skarb,
-- ogre po zjedzeniu skarbu zmienia sprite,
-- ogre ma 2 HP,
-- ogre zadaje 2 obrazenia temu, z czym koliduje,
-- ogre zadaje obrazenia takze innym ogres.
-
-Nieokreslone:
-
-- czy zmiana sprite po skarbie ma wplyw na mechanike,
-- co jesli ogre widzi kilka skarbow w tej samej odleglosci,
-- czy ogre moze kolidowac ze wszystkimi typami potworow,
-- czy ogre atakuje bloby, gobliny i wizardy,
-- czy ogre moze zabic innego ogre,
-- czy ogre dostaje obrazenia zwrotne od innych postaci.
-
-Decyzja implementacyjna:
-
-- zmiana sprite jest czysto wizualna,
-- ogre zadaje 2 obrazenia w kazdej dozwolonej kolizji,
-- przy kolizji ogre-ogre oba otrzymuja 2 obrazenia,
-- przy rownych celach stosujemy deterministyczny tie-breaker.
-
-### 14.5. Minitaur
-
-Status: **opisane wprost / czesciowo nieokreslone**.
-
-Z artykulu:
-
-- Minitaur zawsze porusza sie o 1 krok wzdluz najkrotszej sciezki do bohatera,
-- najkrotsza sciezka jest wyznaczana przez A*,
-- podczas wyznaczania sciezki ignoruje inne postacie i obiekty,
-- Minitaur ignoruje line of sight,
-- kolizja z Minitaurem zadaje 1 obrazenie,
-- Minitaur nie ma HP,
-- Minitaur nie moze zginac,
-- jesli Minitaur otrzyma obrazenia, zostaje ogluszony na 3 rundy,
-- ogluszonego Minitaura mozna minac/przejsc przez niego.
-
-Nieokreslone:
-
-- czy Minitaur moze wejsc na pulapke,
-- czy pulapka oglusza Minitaura,
-- czy oszczep zawsze oglusza Minitaura,
-- jak A* rozstrzyga wiele rownych sciezek,
-- jak rozpatrzyc faktyczna kolizje, jesli sciezka A* prowadzi przez NPC albo obiekt,
-- kiedy dokladnie zmniejsza sie licznik ogluszenia,
-- czy "3 rounds" oznacza 3 pelne tury gracza czy 3 kolejki Minitaura.
-
-Decyzja implementacyjna:
-
-- oszczep oglusza Minitaura na 3 jego akcje,
-- podczas ogluszenia Minitaur nie rusza sie i mozna przejsc przez jego kafel,
-- A* stosuje staly porzadek sasiadow,
-- Minitaur traktuje sciany jako blokady, a inne postacie i obiekty ignoruje przy planowaniu sciezki,
-- jesli ruch Minitaura wchodzi w inna postac, rozpatrujemy kolizje wedlug macierzy kolizji.
-
-## 15. Kolizje
-
-Status: **czesciowo opisane, czesciowo nieokreslone**.
-
-Opisane wprost:
-
-- bohater lub blob konsumuje potion,
-- bohater lub ogre konsumuje treasure,
-- postac po wejsciu w portal teleportuje sie,
-- postac wchodzaca na trap dostaje 1 obrazenie,
-- bohater zadaje 1 obrazenie innym postaciom przy kolizji,
-- goblin zadaje 1 obrazenie przy kolizji,
-- wizard nie zadaje obrazen przy kolizji,
-- blob zadaje obrazenia rowne poziomowi przy kolizji z postacia nie-bedaca blobem,
-- blob + blob powoduje scalenie,
-- ogre zadaje 2 obrazenia temu, z czym koliduje, w tym innym ogres,
-- Minitaur zadaje 1 obrazenie przy kolizji,
-- ogluszony Minitaur moze byc mijany.
-
-Nieokreslone:
-
-- pelna macierz kolizji miedzy kazda para typow,
-- czy kolizje sa symetryczne,
-- czy obrazenia sa zadawane przed ruchem, po ruchu, czy w trakcie,
-- czy postac moze wejsc na pole zajete przez postac, ktora zginie od tej kolizji,
-- czy NPC moga zajmowac ten sam kafel po kolizji,
-- czy obiekty podlogowe zostaja pod postacia po kolizji.
-
-Minimalna macierz do zdefiniowania w implementacji:
-
-| Kolizja | Status z artykulu | Decyzja potrzebna |
+### 10.4. Portal
+
+- portale występują parami; siedem map zawiera jedną parę dającą skrót;
+- wejście postaci w portal przenosi ją natychmiast do sparowanego portalu
+  w tej samej turze;
+- pole docelowe nie może być ścianą;
+- jeśli pole docelowe jest zajęte, **teleport jest zablokowany** i postać
+  zostaje na portalu wejściowym;
+- teleportacja nie zwiększa `ST` poza samym ruchem wejścia na portal;
+- wejście bohatera na portal zwiększa `TU`.
+
+Decyzje: `portal_occupied_destination`.
+
+### 10.5. Pułapka
+
+- zadaje 1 obrażenie każdej postaci wchodzącej na jej kafel, za każdym razem;
+- nie znika po aktywacji;
+- rani bohatera i NPC posiadające HP;
+- Minitaura, który nie ma HP, **ogłusza na trzy jego akcje**;
+- sześć map zawiera co najmniej jedną pułapkę.
+
+Decyzje: `trap_minitaur`.
+
+## 11. Przeciwnicy
+
+### 11.1. Goblin
+
+- porusza się o 1 kafel w stronę bohatera po najkrótszej ścieżce,
+  ale **tylko gdy ma nieprzerwaną linię wzroku**; bez niej stoi;
+- ma 1 HP i zadaje 1 obrażenie przy kolizji;
+- omija kolizje z innymi goblinami i z wizardami: ich pola są nieprzejezdne
+  wewnątrz przeszukiwania ścieżki, więc goblin **obchodzi je inną trasą**;
+  stoi dopiero wtedy, gdy żadna ścieżka nie istnieje;
+- w bloba, ogra i Minitaura może wejść, wywołując kolizję.
+
+Decyzje: `goblin_avoidance_scope`, `blocked_path_detour`.
+
+### 11.2. Wizard (goblin dystansowy)
+
+- jeśli ma nieprzerwaną linię wzroku do bohatera w zasięgu **5 kafli włącznie**,
+  rzuca zaklęcie zadające 1 obrażenie;
+- w przeciwnym razie podchodzi o 1 kafel w stronę bohatera — ale tylko przy
+  zachowanej linii wzroku; bez niej stoi;
+- nigdy nie atakuje i nie rusza się w tej samej turze;
+- ma 1 HP i **nie zadaje obrażeń przez kolizję**;
+- dystans liczony jest po osi linii wzroku;
+- omija gobliny i wizardy tak samo jak goblin.
+
+Decyzje: `wizard_without_los`, `goblin_avoidance_scope`, `blocked_path_detour`.
+
+### 11.3. Blob
+
+- nie rusza się, jeśli nie widzi mikstury ani bohatera;
+- rusza się o 1 kafel w stronę najbliższego widocznego celu;
+- przy równym dystansie **preferuje miksturę** przed bohaterem; dalszy remis
+  rozstrzyga porządek wierszowy (klucz: dystans, obiekt przed bohaterem,
+  wiersz, kolumna);
+- konsumuje miksturę po wejściu na jej kafel, ale się nie leczy;
+- po kolizji z innym blobem scala się w silniejszego: poziomy sumują się
+  do `min(3, a + b)`, scalony blob zostaje na kaflu kolizji;
+- otrzymanie obrażeń obniża poziom o 1; blob poziomu 1 ginie;
+- zadaje obrażenia równe swojemu poziomowi każdej kolidującej postaci,
+  która nie jest blobem.
+
+Decyzje: `target_tie_break`, `blob_merge_and_turn_order`.
+
+### 11.4. Ogr
+
+- nie rusza się, jeśli nie widzi skarbu ani bohatera;
+- rusza się o 1 kafel w stronę najbliższego widocznego celu;
+- przy równym dystansie **preferuje skarb** przed bohaterem; tie-break jak
+  u bloba;
+- konsumuje skarb po wejściu na jego kafel;
+- ma 2 HP i zadaje 2 obrażenia w każdej dozwolonej kolizji, w tym innym ogrom
+  — przy kolizji ogr–ogr obaj otrzymują 2 obrażenia.
+
+Decyzje: `target_tie_break`.
+
+### 11.5. Minitaur
+
+- **zawsze** porusza się o 1 krok najkrótszą ścieżką A* do bohatera,
+  ignorując linię wzroku;
+- przy planowaniu ścieżki traktuje ściany jako blokady, a inne postacie
+  i obiekty ignoruje;
+- A* stosuje stały porządek sąsiadów (N, E, S, W);
+- jeśli jego ruch wchodzi w inną postać, rozpatrujemy kolizję według macierzy;
+- zadaje 1 obrażenie przy kolizji;
+- **nie ma HP i nie może zginąć**; po otrzymaniu obrażeń jest ogłuszony
+  na 3 swoje akcje;
+- podczas ogłuszenia nie rusza się i można przejść przez jego kafel;
+- każda mapa zawiera Minitaura, `map02` zawiera dwa.
+
+Decyzje: `trap_minitaur`, `equal_path_tie_break`.
+
+## 12. Macierz kolizji
+
+| Kolizja | Rozstrzygnięcie |
+| --- | --- |
+| bohater + mikstura | leczy +1 (maks. 10), usuwa miksturę |
+| blob + mikstura | usuwa miksturę, bez leczenia |
+| bohater + skarb | zwiększa `TO`, usuwa skarb |
+| ogr + skarb | usuwa skarb, zmiana sprite'a bez efektu |
+| dowolna postać + portal | teleport na sparowany portal, o ile cel wolny |
+| dowolna postać + pułapka | 1 obrażenie przy wejściu; Minitaur ogłuszony |
+| bohater + goblin | bohater zadaje 1, goblin zadaje 1 |
+| bohater + wizard | bohater zadaje 1; wizard nie zadaje kolizyjnie |
+| bohater + blob | bohater zadaje 1; blob zadaje obrażenia równe poziomowi |
+| bohater + ogr | bohater zadaje 1, ogr zadaje 2 |
+| bohater + Minitaur | bohater otrzymuje 1; Minitaur zostaje ogłuszony |
+| blob + blob | scalenie do `min(3, a + b)` |
+| ogr + ogr | obaj otrzymują 2 obrażenia |
+| goblin/wizard + goblin/wizard | omijanie trasą, nie kolizja |
+| NPC + wyjście | neutralne pole przechodnie |
+| NPC + leżący oszczep | nie modelowane (patrz „Świadomie otwarte") |
+
+Obrażenia w kolizji są jednoczesne, a wchodząca postać zajmuje pole tylko
+wtedy, gdy okupant zniknie.
+
+Decyzje: `collision_timing`, `npc_exit_behavior`, `blocked_path_detour`.
+
+## 13. Mapy
+
+Artykuł podaje 11 map (Fig. 2) i następujące niezmienniki:
+
+- trening ewolucji polityk używa map 1, 2, 3, 4, 7, 10;
+- test agentów używa wszystkich 11 map;
+- każda mapa zawiera co najmniej jednego Minitaura, `map02` dwa;
+- `map01` i `map09` nie zawierają ogrów;
+- `map04` i `map10` mają więcej wizardów niż goblinów walczących wręcz;
+- `map01` ma więcej goblinów walczących wręcz niż wizardów;
+- siedem map zawiera portale, sześć zawiera pułapki;
+- mapy różnią się liczbą ścian, wąskich przejść, martwych końców
+  i długością najkrótszej ścieżki.
+
+Procedura rekonstrukcji: przepisujemy logikę mapy z Fig. 2, tworzymy raport
+liczebności obiektów, porównujemy z Fig. 3 i akceptujemy mapę, gdy liczebności
+się zgadzają. W pracy opisujemy mapy jako rekonstrukcję.
+
+Wyniki tej procedury, poprawki audytu i sumy kontrolne: `docs/benchmark.md`.
+
+## 14. Cechy poziomów używane w analizie
+
+Artykuł wymienia cechy poziomów służące do korelacji z wynikami person: liczbę
+obiektów interaktywnych, liczbę skarbów, mikstur, goblinów, wizardów,
+Minitaurów, blobów, ogrów, portali, pułapek i ścian, wąskie przejścia
+(choke points), martwe końce (dead ends), obszary otwarte (open areas),
+długość najkrótszej ścieżki wejście–wyjście oraz „wiele innych"
+niewymienionych wprost.
+
+Definicje podane w artykule:
+
+- **martwe końce** — kafle z dokładnie jednym połączonym sąsiadem przechodnim;
+- **wąskie przejścia** — kafle z dwoma połączonymi sąsiadami przechodnimi;
+- **obszary otwarte** — kafle, których wszyscy sąsiedzi są nie-ścianami.
+
+Przyjęte uzupełnienia:
+
+- cechy topologiczne liczymy na statycznej mapie;
+- sąsiedztwo to 4 kierunki;
+- obiekty nie wpływają na topologię;
+- ścieżka wejście–wyjście liczona jest po polach przechodnich,
+  w wersji bazowej bez portali.
+
+Pełna lista „many others" nie jest znana i nie da się jej odtworzyć.
+
+## 15. Metryki rozgrywki (Table I)
+
+| Skrót | Nazwa | Postać |
 | --- | --- | --- |
-| Hero + potion | opisane | leczy +1 i usuwa potion |
-| Blob + potion | opisane | usuwa potion |
-| Hero + treasure | opisane | zwieksza TO i usuwa treasure |
-| Ogre + treasure | opisane | usuwa treasure |
-| Dowolna postac + portal | opisane | teleportuje na sparowany portal |
-| Dowolna postac + trap | opisane | 1 obrazenie przy wejsciu |
-| Blob + blob | opisane | scalenie |
-| Ogre + ogre | opisane | obrazenia 2 |
-| Hero + goblin | opisane | hero zadaje 1, goblin zadaje 1 |
-| Hero + wizard | opisane czesciowo | hero zadaje 1, wizard nie zadaje kolizyjnie |
-| Hero + blob | opisane czesciowo | hero zadaje 1, blob zadaje obrazenia rowne poziomowi |
-| Hero + ogre | opisane czesciowo | hero zadaje 1, ogre zadaje 2 |
-| Hero + Minitaur | opisane | hero dostaje 1, Minitaur po obrazeniu jest ogluszony |
-| Goblin + goblin/wizard | opisane czesciowo | goblin unika |
-| NPC + portal | opisane | teleportuje jak kazda postac |
-| NPC + exit | nieokreslone | zdefiniowac |
-| NPC + javelin | nieokreslone | zdefiniowac |
+| `ST` | Steps Taken | liczba kroków |
+| `PE` | Proximity to Exit | patrz niżej |
+| `PD` | Potions Drunk | ratio do liczby mikstur |
+| `TO` | Treasures Opened | ratio do liczby skarbów |
+| `MTK` | Minitaur Knockouts | liczba ogłuszeń |
+| `MS` | Monsters Slain | ratio do liczby zabijalnych potworów |
+| `JT` | Javelins Thrown | liczba rzutów |
+| `HL` | Health Left | pozostałe HP |
+| `TU` | Teleports Used | liczba użyć portalu przez bohatera |
+| `TS` | Traps Sprung | liczba pułapek wdepniętych przez bohatera |
+| `R̄` | Average MCTS reward | wymienione, ale nieopisane w artykule |
+| `IC` | Interactive Objects Consumed | patrz niżej |
 
-## 16. Mapy
+`PD`, `MS`, `TO` i `IC` są wartościami względnymi (ratio).
 
-Status: **widoczne w artykule / czesciowo opisane**.
+Dwie metryki artykuł zostawia niedomknięte i wymagają jawnej interpretacji
+w pracy:
 
-Z artykulu:
+- **`PE`** — artykuł maksymalizuje `PE`, podaje `PE = 0` po osiągnięciu wyjścia
+  i nie podaje wzoru. Przyjęto `PE = -dystans / maksymalny dystans` po
+  statycznej najkrótszej ścieżce: **0 na wyjściu, −1 w najdalszym punkcie
+  mapy**. Portale są pomijane. To jedyny wariant spełniający jednocześnie
+  „maksymalizuj" i „zero na wyjściu".
+- **`IC`** — opis Completionisty obejmuje potwory, a notka pod Table I nazywa
+  `IC` obiektami nie-potworami. Przyjęto wariant zgodny z opisem persony:
+  zabici przez bohatera wrogowie + wypite mikstury + otwarte skarby, dzielone
+  przez ich początkową sumę. Silnik raportuje dodatkowo
+  `interactive_non_monster_ratio`, żeby zachować przejrzystość.
 
-- istnieje 11 map MiniDungeons 2,
-- wszystkie 11 sa pokazane w Fig. 2,
-- trening ewolucji polityk uzywa map 1, 2, 3, 4, 7, 10,
-- test agentow uzywa wszystkich 11 map,
-- wszystkie mapy zawieraja co najmniej jednego Minitaura,
-- mapa 2 ma dwoch Minotaurow/Minitaurs,
-- mapy 1 i 9 nie zawieraja ogres,
-- mapy 4 i 10 maja wiecej ranged goblins niz melee goblins,
-- mapa 1 ma wiecej melee goblins niz ranged goblins,
-- siedem map zawiera portale,
-- szesc map zawiera pulapki,
-- mapy roznia sie liczba scian, choke pointow, dead endow i dlugoscia najkrotszej sciezki.
+Decyzje: `proximity_to_exit`, `interactive_objects_consumed`,
+`monsters_slain_denominator`.
 
-Nieokreslone:
+## 16. Persony
 
-- oryginalne pliki map,
-- dokladne wspolrzedne kazdego obiektu jako tekst,
-- pelna lista liczebnosci obiektow dla kazdej mapy poza tym, co da sie odczytac z Fig. 3,
-- parowanie portali,
-- czy Fig. 2 wystarcza do bezblednego rozpoznania wszystkich typow kafli,
-- czy kolory/sprite'y z Fig. 2 sa jednoznaczne.
+Cztery persony różnią się wyłącznie funkcją użyteczności. Wagi i kara śmierci
+są w `data/rules/personas.json`, a wykonuje je
+`src/minidungeons/domain/personas.py`.
 
-Decyzja implementacyjna:
-
-- mapy przepisujemy recznie z Fig. 2,
-- po przepisaniu tworzymy raport liczebnosci obiektow i porownujemy z Fig. 3,
-- jesli liczebnosci sie zgadzaja, mapa jest zaakceptowana jako rekonstrukcja logiczna,
-- w pracy opisujemy mapy jako rekonstrukcje na podstawie Fig. 2.
-
-## 17. Cechy poziomow uzywane w analizie
-
-Status: **czesciowo opisane**.
-
-Artykul wspomina nastepujace cechy poziomow:
-
-- liczba interaktywnych obiektow,
-- liczba treasures,
-- liczba potions,
-- liczba goblins,
-- liczba wizards,
-- liczba minitaurs,
-- liczba blobs,
-- liczba ogres,
-- liczba portali,
-- liczba pulapek,
-- liczba scian,
-- choke points,
-- dead ends,
-- dlugosc najkrotszej sciezki miedzy wejsciem a wyjsciem,
-- open areas,
-- wiele innych niewymienionych cech.
-
-Opisane definicje:
-
-- dead ends to kafle z tylko jednym polaczonym przechodnim sasiadem,
-- choke points wedlug tekstu sa kaflami z dwoma polaczonymi przechodnimi sasiadami,
-- open areas sa kaflami, gdzie wszystkie sasiednie kafle sa nie-scianami.
-
-Nieokreslone:
-
-- pelna lista "many others",
-- czy sasiedzi liczeni sa tylko w 4 kierunkach,
-- czy obiekty i postacie wplywaja na cechy poziomu,
-- czy portale sa uwzgledniane w najkrotszej sciezce,
-- czy pulapki sa traktowane jako przechodnie,
-- czy wyjscie i wejscie sa liczone jako przechodnie.
-
-Decyzja implementacyjna:
-
-- cechy topologiczne liczymy na statycznej mapie,
-- sasiedzi to 4 kierunki,
-- obiekty nie blokuja topologii,
-- sciezka wejscie-wyjscie liczona jest po polach przechodnich, opcjonalnie bez portali w bazowej wersji.
-
-## 18. Metryki rozgrywki
-
-Status: **opisane w Table I / czesciowo nieokreslone**.
-
-Metryki z artykulu:
-
-| Skrot | Nazwa | Status |
+| Persona | Cel | Użyteczność (żywy) |
 | --- | --- | --- |
-| ST | Steps Taken | opisane jako liczba krokow |
-| PE | Proximity to Exit | uzywane, ale bez pelnego wzoru |
-| PD | Potions Drunk | opisane, ratio do liczby potions |
-| TO | Treasures Opened | opisane, ratio do liczby treasures |
-| MTK | Minitaur Knockouts | opisane przez mechanike Minitaura |
-| MS | Monsters Slain | opisane, ratio do liczby monsters |
-| JT | Javelins Thrown | opisane jako liczba rzutow oszczepem |
-| HL | Health Left | opisane jako pozostale HP |
-| TU | Teleports Used | opisane przez portale |
-| TS | Traps Sprung | opisane przez pulapki |
-| Rbar | Average MCTS reward | wymienione, ale nieopisane szczegolowo |
-| IC | Interactive Objects Consumed | uzywane, czesciowo niejednoznaczne |
+| Runner | dotrzeć do wyjścia w jak najmniejszej liczbie ruchów | `PE - 0.01 · ST` |
+| Monster Killer | zabić jak najwięcej potworów, drugorzędnie zbliżyć się do wyjścia | `0.7 · MS + 0.3 · PE` |
+| Treasure Collector | zebrać jak najwięcej skarbów, drugorzędnie zbliżyć się do wyjścia | `0.7 · TO + 0.3 · PE` |
+| Completionist | konsumować obiekty i zabijać potwory, drugorzędnie zbliżyć się do wyjścia | `0.7 · IC + 0.3 · PE` |
 
-Z artykulu:
+Śmierć bohatera odejmuje **5** od użyteczności każdej persony.
 
-- `PD`, `MS`, `TO`, `IC` sa wartosciami ratio,
-- `PD` jest ratio wzgledem wszystkich potions,
-- `MS` jest ratio wzgledem wszystkich monsters,
-- `TO` jest ratio wzgledem wszystkich treasures,
-- `IC` jest ratio wzgledem wszystkich non-monster game objects wedlug zdania pod Table I,
-- Completionist w opisie celu obejmuje monsters, potions, treasures.
+## 17. MCTS w protokole artykułu
 
-Uwaga o niespojnosci:
+Fakty z artykułu:
 
-- Tekst opisuje Completionist jako osobe konsumujaca/killing monsters, potions, treasures.
-- Zdanie o `IC` mowi o ratio z "all non-monster game objects".
-- To tworzy potencjalna niespojnosc: czy `IC` zawiera monsters, czy nie.
+- wszystkie persony używają MCTS do sformułowania sekwencji akcji;
+- MiniDungeons 2 jest deterministyczne, więc persona buduje **jedno drzewo
+  na mapę**;
+- budowa drzewa kończy się po znalezieniu zwycięskiego stanu terminalnego
+  albo po timeoucie (w wynikach wspomniane maksimum 300 sekund);
+- agent bierze najlepszą znalezioną sekwencję akcji;
+- rollout symuluje 10 losowych ruchów przed propagacją;
+- baseline używa UCB1, a wariant badany zastępuje UCB1 formułą wyewoluowaną
+  przez programowanie genetyczne.
 
-Decyzja implementacyjna:
+Uzupełnienia tej implementacji:
 
-- dla eksperymentu glownego warto zdefiniowac `IC` jako ratio wszystkich obiektow istotnych dla Completionist: monsters slain + potions drunk + treasures opened, bo to zgadza sie z opisem persony,
-- w pracy nalezy zaznaczyc, ze artykul ma tu niejednoznaczne sformulowanie,
-- mozna dodatkowo raportowac `IC_non_monster`, zeby zachowac pelna transparentnosc.
+- rollout obejmuje pełne tury gry: akcja bohatera + reakcja NPC;
+- losowy rollout wybiera legalne akcje bohatera;
+- zwycięstwo napotkane wyłącznie w rollout wpływa na wynik tylko przez
+  użyteczność w propagacji — jego losowe akcje nie stają się sekwencją
+  do odegrania. Do zakończenia szukania potrzebny jest terminalny węzeł drzewa;
+- po wyczerpaniu budżetu czasu agent odgrywa ścieżkę zachłanną po najwyższej
+  średniej użyteczności;
+- budżet czasu jest jawnym parametrem eksperymentu.
 
-## 19. Proximity to Exit
+Szczegóły uruchamiania: `README.md`.
 
-Status: **wspomniane, ale nieopisane wzorem**.
+## 18. Checklist zgodności metodologicznej
 
-Z artykulu:
+Środowisko jest zgodne z artykułem, gdy:
 
-- `PE` jest uzywane w funkcjach uzytecznosci,
-- dla przykladu fitness Monster Killer autorzy pisza, ze `PE = 0`, jesli wyjscie zostalo osiagniete,
-- Runner maksymalizuje `PE - 0.01 * ST`,
-- `PE` jest nazywane proximity to exit.
+- ma 11 map logicznie odtworzonych z Fig. 2;
+- mapy mają rozmiar 10 × 20, z udokumentowanym wyjątkiem `map05` 11 × 14;
+- bohater ma 10 HP, wyjście jest warunkiem zwycięstwa, a utrata HP śmiercią;
+- ma mikstury, skarby, portale i pułapki;
+- ma wielorazowy oszczep i linię wzroku;
+- ma gobliny, wizardy, bloby, ogry i Minitaury;
+- ma stałą kolejność tur NPC według pozycji początkowej;
+- liczy metryki z Table I;
+- implementuje Runnera, Monster Killera, Treasure Collectora i Completionistę;
+- pozwala uruchomić MCTS-UCB1;
+- pozwala uruchomić MCTS z ewoluowaną polityką drzewa;
+- pozwala uruchomić PPO/RL jako rozszerzenie;
+- zapisuje wyniki dla 50 prób na mapę;
+- rozdziela mapy treningowe i testowe tak jak artykuł.
 
-Nieokreslone:
-
-- czy `PE` jest dystansem, czy odwrotnoscia dystansu,
-- czy wieksze `PE` oznacza blizej wyjscia,
-- jak `PE = 0` po osiagnieciu wyjscia pasuje do maksymalizacji funkcji Runner,
-- czy `PE` jest normalizowane,
-- czy uzywa Manhattan distance, A*, shortest path, czy odleglosci Euklidesowej,
-- czy portale sa uwzgledniane.
-
-Decyzja implementacyjna:
-
-- nalezy wybrac jedna definicje i trzymac ja dla wszystkich agentow,
-- bezpieczna opcja: `PE = 1 - shortest_path_distance_to_exit / max_shortest_path_distance_on_map`, a po osiagnieciu wyjscia `PE = 1`,
-- jesli chcemy byc blizej zdania "PE = 0 if exit was reached", mozna zdefiniowac `PE` jako negatywny znormalizowany dystans albo osobno nazwac metryke `distance_to_exit`,
-- w pracy trzeba jasno wskazac wybrana interpretacje.
-
-## 20. Persony
-
-Status: **opisane wprost**.
-
-### Runner
-
-Cel:
-
-- dotrzec do wyjscia,
-- zrobic to w jak najmniejszej liczbie ruchow.
-
-Utility:
+## 19. Proponowany opis do pracy
 
 ```text
-U_R = PE - 0.01 * ST       jesli bohater zyje
-U_R = PE - 0.01 * ST - 5   jesli bohater umarl
+Środowisko MiniDungeons 2 zostało zrekonstruowane na podstawie opisu mechanik,
+metryk i map przedstawionych w publikacji źródłowej. Celem implementacji jest
+zachowanie zgodności metodologicznej z eksperymentem autorów, a nie bitowa
+reprodukcja oryginalnego silnika. W przypadkach, w których publikacja nie
+określa jednoznacznie reguły sytuacji brzegowej, przyjęto deterministyczne
+reguły implementacyjne opisane w rozdziale dotyczącym środowiska.
 ```
-
-### Monster Killer
-
-Cel:
-
-- zabic jak najwiecej potworow,
-- drugorzednie zblizyc sie do wyjscia.
-
-Utility:
-
-```text
-U_MK = 0.7 * MS + 0.3 * PE       jesli bohater zyje
-U_MK = 0.7 * MS + 0.3 * PE - 5   jesli bohater umarl
-```
-
-### Treasure Collector
-
-Cel:
-
-- zebrac jak najwiecej skarbow,
-- drugorzednie zblizyc sie do wyjscia.
-
-Utility:
-
-```text
-U_TC = 0.7 * TO + 0.3 * PE       jesli bohater zyje
-U_TC = 0.7 * TO + 0.3 * PE - 5   jesli bohater umarl
-```
-
-### Completionist
-
-Cel:
-
-- konsumowac obiekty,
-- zabijac potwory,
-- zbierac potions i treasures,
-- drugorzednie zblizyc sie do wyjscia.
-
-Utility:
-
-```text
-U_C = 0.7 * IC + 0.3 * PE       jesli bohater zyje
-U_C = 0.7 * IC + 0.3 * PE - 5   jesli bohater umarl
-```
-
-Nieokreslone:
-
-- dokladna definicja `IC`,
-- dokladna definicja `PE`,
-- czy utility liczone jest tylko po rolloutach, czy takze po kazdym realnym ruchu poza MCTS.
-
-## 21. MCTS jako czesc systemu grywalnego
-
-Status: **opisane wprost jako metoda, nie jako zasada gry**.
-
-Z artykulu:
-
-- wszystkie persony uzywaja MCTS do sformulowania sekwencji akcji,
-- MiniDungeons 2 jest deterministyczne, wiec persona buduje jedno drzewo na mape,
-- budowa drzewa konczy sie po znalezieniu zwycieskiego stanu terminalnego albo po timeout,
-- agent bierze najlepsza znaleziona sekwencje akcji,
-- rollout symuluje 10 losowych ruchow przed backpropagation,
-- baseline uzywa UCB1,
-- evolved MCTS zastepuje UCB1 wyewoluowana formula.
-
-Nieokreslone:
-
-- dokladny timeout dla kazdego eksperymentu poza wzmianka o maksimum 300 sekund w wynikach,
-- czy 10 losowych ruchow obejmuje tury NPC,
-- jak wybierana jest najlepsza sekwencja,
-- jak rozstrzygane sa remisy w ocenie wezlow,
-- czy drzewo jest naprawde jedno na cala mape, czy aktualizowane po kolejnych akcjach,
-- jak dokladnie reprezentowane sa akcje z oszczepem.
-
-Decyzja implementacyjna:
-
-- rollout obejmuje pelne tury gry: akcja bohatera + reakcja NPC,
-- losowy rollout wybiera legalne akcje bohatera,
-- po wyborze najlepszej sekwencji mozna wykonac cala sekwencje albo pierwszy ruch i kontynuowac wedlug zalozenia; trzeba to opisac,
-- timeout ustawiamy jawnie w konfiguracji eksperymentu.
-
-## 22. Wiedza brakujaca mimo wzmianki w artykule
-
-Najwazniejsze braki do uzupelnienia decyzja implementacyjna po uwzglednieniu obu lokalnych PDF-ow:
-
-1. Oryginalne pliki map.
-2. Dokladne wspolrzedne i parowanie portali.
-3. Pelna definicja line of sight.
-4. Pelna definicja `PE`.
-5. Pelna definicja `IC`.
-6. Pelna macierz rzadkich kolizji postac-postac, szczegolnie NPC-NPC poza przypadkami opisanymi wprost.
-7. Tie-breakery dla ruchu NPC.
-8. Tie-breakery dla A* Minitaura.
-9. Zachowanie NPC na wyjsciu, pulapkach i oszczepie.
-10. Szczegolowa mechanika oszczepu po zabiciu celu i przy wielu celach w jednej linii.
-11. Kolejnosc rozpatrywania obrazen i smierci.
-12. Zachowanie scalonego bloba w kolejce tur.
-13. Czy trap oglusza Minitaura.
-14. Czy obiekty i NPC blokuja line of sight.
-15. Czy ruch w sciane jest nielegalny, czy jest akcja bez efektu.
-16. Czy akcja "czekaj" istnieje.
-17. Czy rzut oszczepem liczy sie do `ST`.
-18. Dokladny budzet czasu/iteracji MCTS.
-19. Dokladna implementacja "average MCTS reward".
-20. Pelna lista cech poziomow okreslona jako "many others".
-21. Roznica startowego HP bohatera: 1-10 HP w opisie MD2 kontra 10 HP w eksperymencie MCTS.
-
-## 23. Minimalny zestaw decyzji przed kodowaniem
-
-Przed implementacja pelnego srodowiska trzeba zamknac te decyzje:
-
-- format map tekstowych,
-- symbole wszystkich kafli i przeciwnikow,
-- definicja line of sight,
-- definicja kolejnosci rozpatrywania walki bohater-potwor,
-- definicja oszczepu,
-- definicja `PE`,
-- definicja `IC`,
-- pelna macierz kolizji,
-- tie-breaker ruchu,
-- tie-breaker A*,
-- liczenie `TU` przy portalach uzytych przez NPC,
-- zasady pulapek dla Minitaura,
-- czy istnieje akcja wait,
-- czy MCTS wykonuje cala sekwencje czy tylko pierwszy ruch.
-
-## 24. Proponowane zdanie do pracy
-
-W pracy warto uzyc podobnego opisu:
-
-```text
-Srodowisko MiniDungeons 2 zostalo zrekonstruowane na podstawie opisu mechanik,
-metryk i map przedstawionych w publikacji zrodlowej. Celem implementacji jest
-zachowanie zgodnosci metodologicznej z eksperymentem autorow, a nie bitowa
-reprodukcja oryginalnego silnika. W przypadkach, w ktorych publikacja nie
-okresla jednoznacznie reguly sytuacji brzegowej, przyjeto deterministyczne
-reguly implementacyjne opisane w rozdziale dotyczacym srodowiska.
-```
-
-## 25. Checklist zgodnosci z artykulem
-
-Srodowisko mozna uznac za zgodne metodologicznie, gdy:
-
-- ma 11 map logicznie odtworzonych z Fig. 2,
-- mapy maja rozmiar 10x20, z udokumentowanym wyjatkiem mapy 5 o rozmiarze 11x14,
-- ma bohatera z 10 HP,
-- ma wyjscie jako warunek zwyciestwa,
-- ma smierc po utracie HP,
-- ma potions, treasures, portals, traps,
-- ma oszczep wielorazowy,
-- ma line of sight,
-- ma goblins, wizards, blobs, ogres, minitaurs,
-- ma stala kolejnosc tur NPC wedlug pozycji poczatkowej,
-- liczy metryki z Table I,
-- implementuje Runner, Monster Killer, Treasure Collector, Completionist,
-- pozwala uruchomic MCTS-UCB1,
-- pozwala uruchomic MCTS z ewoluowana polityka drzewa,
-- pozwala uruchomic PPO/RL jako rozszerzenie,
-- zapisuje wyniki dla 50 prob na mape,
-- rozdziela mapy treningowe i testowe tak jak artykul.
-
-## 26. Najblizszy krok
-
-Stan obecny:
-
-- zamrozony benchmark `md2-reconstructed-v1`: 11 map w `data/maps/md2/benchmark/`,
-  pary portali w `portal_pairs.json`, wymiary i hashe w `benchmark_manifest.json`,
-- mapa 5 jest jawnym wyjatkiem 11x14 potwierdzonym siatka kontrolna,
-- liczebnosci obiektow sa zgodne z Fig. 3 (`docs/benchmark/object_counts.md`),
-- ograniczenia rekonstrukcji opisuje `docs/benchmark/uncertainties.md`,
-- spojnosci i sum kontrolnych pilnuje `tools/validate_stage0.py`,
-- deterministyczny, klonowalny silnik jest w `src/minidungeons/domain/engine.py`;
-  parametry w `data/rules/md2_rules.json` i `data/rules/personas.json`,
-  testy mechanik w `tests/domain/test_rules_engine.py`.
-
-Najblizszy krok to dluzszy sanity check Random Agenta na wszystkich 11 mapach,
-a po nim implementacja MCTS-UCB1.

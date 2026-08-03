@@ -12,10 +12,12 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
+gui = ["pygame-ce>=2.5"]
 
 [project.scripts]
 minidungeons-random = "minidungeons.cli.random_agent:main"
 minidungeons-mcts = "minidungeons.cli.mcts_experiment:main"
+minidungeons-play = "minidungeons.frontend.game_loop:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

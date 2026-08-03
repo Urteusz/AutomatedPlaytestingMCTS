@@ -10,6 +10,9 @@
   "movement": {
     "directions": ["N", "E", "S", "W"]
   },
+  "metrics": {
+    "proximity_to_exit": "binary"
+  },
   "pathfinding": {
     "neighbor_order": ["N", "E", "S", "W"]
   },

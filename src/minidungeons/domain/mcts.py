@@ -7,7 +7,7 @@ from pathlib import Path
 import random
 import time
 
-from .engine import Action, MiniDungeon
+from .engine import Action, Coord, MiniDungeon
 
 from .personas import utility
 
@@ -63,6 +63,10 @@ class MonteCarloTreeSearch:
     def __init__(self, map_path: str | Path) -> None:
         self.env = MiniDungeon(map_path)
         self.root = Node(self.env.clone(), None, None)
+        # slad faktycznie odegranej partii - akcje z rollout-ow tu nie trafiaja
+        self.played: list[Action] = []
+        self.path: list[Coord] = [self.env.hero_position]
+        self.from_tree: bool | None = None
 
     @property
     def done(self) -> bool:
@@ -74,6 +78,13 @@ class MonteCarloTreeSearch:
     def step(self, action: Action | str) -> dict[str, object]:
         # mutuje stan w miejscu i zwraca opis zdarzen tej tury
         _, info = self.env.step(action)
+        self.played.append(action if isinstance(action, Action) else Action.move(action))
+        # kafel portalu tez jest odwiedzony, wiec zapisujemy go przed miejscem
+        # docelowym - inaczej w sladzie powstalby przeskok przez pol mapy
+        for event in info["events"]:
+            if event["type"] == "teleport" and event.get("actor") == "hero":
+                self.path.append(event["from"])  # type: ignore[arg-type]
+        self.path.append(self.env.hero_position)
         return info
 
     def search(self, persona: str, iterations: int, seed: int = 0) -> Action | None:
@@ -147,6 +158,8 @@ class MonteCarloTreeSearch:
             if node.env.done and node.env.metrics.reached_exit:
                 winning_actions = self._path_to(node)
                 break
+        # rozroznienie sladu: wygrana z drzewa czy zachlanny fallback
+        self.from_tree = winning_actions is not None
         if winning_actions is None:
             winning_actions = self._greedy_sequence()
         for action in winning_actions:

@@ -27,7 +27,21 @@ flowchart LR
 Agent MCTS tworzy `MiniDungeon` bezpośrednio ze ścieżki do pliku mapy — między
 algorytmem a domeną nie ma warstwy serwisowej ani repozytorium.
 
-Pełny opis znajduje się w [architekturze backendu](docs/architecture/backend.md).
+### Granice warstw
+
+| Warstwa | Odpowiedzialność | Nie zna |
+| --- | --- | --- |
+| `domain/engine` | stan, akcje, NPC, reguły, metryki | person, MCTS, wejścia-wyjścia |
+| `domain/personas` | funkcje użyteczności czterech person | drzewa MCTS |
+| `domain/mcts` | węzeł, UCB1, selekcja, ekspansja, rollout, propagacja | CSV, procesów, argumentów CLI |
+| `infrastructure` | kanoniczne ścieżki do zamrożonych danych | przebiegu tury |
+| `cli` | argumenty, równoległość, zapis wyników | logiki potworów |
+
+Zależności biegną do środka: `cli` woła `domain`, a `domain/mcts` woła
+`domain/engine`. Silnik nie wie o istnieniu MCTS. Warstwa HTTP (FastAPI,
+`GameService`, sesje REST) istniała we wcześniejszej wersji i została usunięta —
+MCTS z niej nie korzystał. Jeśli powstanie wizualizacja, adapter należy dopisać
+**obok** domeny, nie pod agentem.
 
 ## Szybki start
 
@@ -105,11 +119,16 @@ data/                         niezmienne wejścia eksperymentu
   maps/md2/source-images/     obrazy źródłowe i siatki kontrolne
   rules/                      parametry silnika i person (JSON)
   results/                    wyniki eksperymentów (poza gitem)
-docs/                         architektura, zasady, benchmark, plan i publikacje
+docs/
+  rules/                      zasady gry i decyzje rekonstrukcyjne
+  project/                    plan pracy inżynierskiej
+  reference/articles/         publikacje źródłowe
+  benchmark.md                walidacja i niepewności rekonstrukcji map
 src/minidungeons/
   domain/                     silnik gry, persony, reguły i MCTS
   infrastructure/             kanoniczne ścieżki do danych
   cli/                        programy konsolowe: agent losowy i eksperyment
+  frontend/                   wizualizacja pygame — w budowie, wymaga `pygame`
 tests/                        testy według warstw
 tools/                        walidator zamrożonego benchmarku
 ```
@@ -123,16 +142,13 @@ tools/                        walidator zamrożonego benchmarku
 
 ## Dokumentacja
 
-- [Architektura i backend](docs/architecture/backend.md) — przepływ programu,
-  granice warstw i plan pod MCTS.
-- [Zasady gry](docs/rules/game-rules.md) — pełna baza reguł MiniDungeons 2.
-- [Decyzje implementacyjne](docs/rules/implementation-decisions.md) — skrót
-  parametrów wykonywalnych dla człowieka.
-- [Rozstrzygnięcia niejednoznaczności](docs/rules/ambiguity-resolutions.md) —
-  decyzje tam, gdzie artykuły nie definiują zachowania.
-- [Legenda symboli](docs/benchmark/legend.md),
-  [liczebności obiektów](docs/benchmark/object_counts.md) i
-  [rejestr niepewności](docs/benchmark/uncertainties.md) — dokumentacja
-  rekonstrukcji map.
-- [Plan pracy](docs/project/roadmap.md) — etapy pracy inżynierskiej.
-- `docs/reference/articles/` — publikacje źródłowe.
+Cztery dokumenty, każdy odpowiada na jedno pytanie:
+
+| Dokument | Odpowiada na pytanie |
+| --- | --- |
+| [Zasady gry](docs/rules/game-rules.md) | jak działa MiniDungeons 2, jakie są metryki i persony |
+| [Decyzje rekonstrukcyjne](docs/rules/decisions.md) | co wzięliśmy z publikacji, a co rozstrzygnęliśmy sami i dlaczego |
+| [Benchmark map](docs/benchmark.md) | skąd wzięło się 11 map, jak je zwalidowano i czego nie da się ustalić pewnie |
+| [Plan pracy](docs/project/roadmap.md) | co jest zrobione, co zostało i w jakim terminie |
+
+Publikacje źródłowe: `docs/reference/articles/`.

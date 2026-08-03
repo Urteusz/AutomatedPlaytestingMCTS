@@ -13,6 +13,7 @@ from concurrent.futures import (
     wait,
 )
 from concurrent.futures.process import BrokenProcessPool
+from contextlib import ExitStack
 import math
 import os
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import Any
 from ..domain.mcts import MonteCarloTreeSearch
 from ..domain.personas import PERSONA_NAMES
 from ..infrastructure.paths import MD2_BENCHMARK_DIR, PROJECT_ROOT
+from ..infrastructure.traces import trace_path_for, trace_record, write_trace
 
 
 RESULTS_DIR = PROJECT_ROOT / "data" / "results"
@@ -62,8 +64,14 @@ def run_one(map_path: str, persona: str, trial: int, time_limit: float) -> dict:
     start = time.perf_counter()
     metrics = agent.play_single_tree(persona, time_limit_s=time_limit, seed=trial)
     elapsed = time.perf_counter() - start
+    map_name = Path(map_path).stem
     return {
-        "persona": persona, "map": Path(map_path).stem, "trial": trial,
+        # slad wraca osobnym kluczem; save_result zdejmuje go przed zapisem CSV
+        "trajectory": trace_record(
+            persona=persona, map_name=map_name, trial=trial,
+            actions=agent.played, path=agent.path, from_tree=agent.from_tree,
+        ),
+        "persona": persona, "map": map_name, "trial": trial,
         "search_policy": SEARCH_POLICY,
         "win": int(metrics["reached_exit"]), "died": int(metrics["died"]),
         "turns": metrics["turns"], "steps": metrics["steps"],
@@ -159,10 +167,14 @@ def save_result(
     handle: Any,
     results: dict[ResultKey, dict[str, object]],
     total: int,
+    trace_handle: Any = None,
 ) -> None:
+    trajectory = row.pop("trajectory", None)
     key = result_key(row)
     if key in results:
         return
+    if trace_handle is not None and trajectory is not None:
+        write_trace(trace_handle, trajectory)
     writer.writerow(row)
     handle.flush()
     os.fsync(handle.fileno())
@@ -183,6 +195,7 @@ def run_pending_tasks(
     handle: Any,
     results: dict[ResultKey, dict[str, object]],
     total: int,
+    trace_handle: Any = None,
 ) -> bool:
     """Run a bounded number of trials; return True after a graceful pause."""
 
@@ -202,7 +215,7 @@ def run_pending_tasks(
                 finished, _ = wait(futures, return_when=FIRST_COMPLETED)
                 for future in finished:
                     row = future.result()
-                    save_result(row, writer, handle, results, total)
+                    save_result(row, writer, handle, results, total, trace_handle)
                     del futures[future]
                     submit_next(pool, task_iterator, futures, time_limit)
         except KeyboardInterrupt:
@@ -224,7 +237,7 @@ def run_pending_tasks(
                     # CSV row, so it will be retried automatically after resume.
                     pass
                 else:
-                    save_result(row, writer, handle, results, total)
+                    save_result(row, writer, handle, results, total, trace_handle)
                 del futures[future]
     finally:
         pool.shutdown(wait=True, cancel_futures=interrupted)
@@ -297,6 +310,17 @@ def main() -> None:
         "--out",
         type=Path,
         default=RESULTS_DIR / "ucb1_tree_terminal.csv",
+    )
+    parser.add_argument(
+        "--traces",
+        type=Path,
+        default=None,
+        help="plik JSONL ze sladami partii (domyslnie <out>_paths.jsonl)",
+    )
+    parser.add_argument(
+        "--no-traces",
+        action="store_true",
+        help="nie zapisuj sladow partii, tylko metryki w CSV",
     )
     parser.add_argument(
         "--restart",
@@ -374,13 +398,19 @@ def main() -> None:
     start = time.perf_counter()
     create_file = args.restart or not args.out.exists() or args.out.stat().st_size == 0
     mode = "w" if create_file else "a"
+    trace_path = None if args.no_traces else (args.traces or trace_path_for(args.out))
     interrupted = False
-    with args.out.open(mode, newline="", encoding="utf-8") as handle:
+    with ExitStack() as stack:
+        handle = stack.enter_context(args.out.open(mode, newline="", encoding="utf-8"))
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         if create_file:
             writer.writeheader()
             handle.flush()
             os.fsync(handle.fileno())
+        trace_handle = None
+        if trace_path is not None:
+            trace_path.parent.mkdir(parents=True, exist_ok=True)
+            trace_handle = stack.enter_context(trace_path.open(mode, encoding="utf-8"))
         if tasks:
             interrupted = run_pending_tasks(
                 tasks,
@@ -390,11 +420,14 @@ def main() -> None:
                 handle,
                 results,
                 total,
+                trace_handle,
             )
 
     print(f"\nczas calosci: {(time.perf_counter() - start) / 3600:.2f} h")
     summarize(list(results.values()))
     print(f"wyniki: {args.out}")
+    if trace_path is not None:
+        print(f"slady partii: {trace_path}")
     if interrupted:
         print(
             f"Eksperyment wstrzymany ({len(results)}/{total}). "

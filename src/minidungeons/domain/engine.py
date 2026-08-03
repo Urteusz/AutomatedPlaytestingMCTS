@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Iterable, Iterator
 
-from .rules import GameRules, PROJECT_ROOT, load_rules
+from .rules import GameRules, PROJECT_ROOT, RulesError, load_rules
 
 Coord = tuple[int, int]
 WALL, EMPTY, ENTRANCE, EXIT = "#", ".", "E", "X"
@@ -120,7 +120,22 @@ class MiniDungeon:
         self.portal_links = self._load_portal_links(portal_pairs_path, portal_pairs)
         self._exit_distances = self._static_distances(self.exit)
         self._max_exit_distance = max(self._exit_distances.values(), default=1) or 1
+        self._proximity_mode = self._load_proximity_mode()
         self.reset()
+
+    def _load_proximity_mode(self) -> str:
+        """Ktora interpretacja PE obowiazuje; patrz docs/rules/decisions.md."""
+
+        try:
+            mode = str(self.rules.value("metrics", "proximity_to_exit"))
+        except RulesError:
+            # starsze pliki regul nie znaja parametru; zachowujemy ich zachowanie
+            return "graded"
+        if mode not in ("binary", "graded"):
+            raise ValueError(
+                f"Unknown proximity_to_exit mode {mode!r}; expected 'binary' or 'graded'"
+            )
+        return mode
 
     def _load_blueprint(self) -> None:
         try:
@@ -287,7 +302,16 @@ class MiniDungeon:
         return numerator / denominator if denominator else 0.0
 
     def proximity_to_exit(self) -> float:
-        # 0 przy wyjsciu, -1 w najdalszym punkcie mapy
+        """PE wedlug wariantu z regul; oba spelniaja PE = 0 na wyjsciu.
+
+        "binary"  - 0 na wyjsciu, -1 wszedzie indziej; odtwarza win rate
+                    baseline'u UCB1 z artykulu (patrz decisions.md);
+        "graded"  - 0 przy wyjsciu, -1 w najdalszym punkcie mapy, liniowo
+                    po statycznej najkrotszej sciezce.
+        """
+
+        if self._proximity_mode == "binary":
+            return 0.0 if self.hero_position == self.exit else -1.0
         distance = self._exit_distances.get(self.hero_position)
         return -1.0 if distance is None else -distance / self._max_exit_distance
 
@@ -836,7 +860,8 @@ class MiniDungeon:
         ]
         return min(matches, key=lambda value: value.initial_order) if matches else None
 
-    def render(self) -> str:
+    def _render_cells(self) -> list[list[str]]:
+        """Siatka symboli: terrain pod obiektami, obiekty pod NPC, Hero na wierzchu."""
         cells = [list(row) for row in self.terrain]
         for position, object_kind in self.objects.items():
             cells[position[0]][position[1]] = SYMBOL_BY_OBJECT[object_kind]
@@ -847,6 +872,14 @@ class MiniDungeon:
             row, column = npc.position
             cells[row][column] = SYMBOL_BY_NPC_KIND[npc.kind]
         cells[self.hero_position[0]][self.hero_position[1]] = "@"
+        return cells
+
+    def render_plain(self) -> str:
+        """Goly stan mapy: jeden znak na pole, bez naglowka, ramki i numeracji."""
+        return "\n".join("".join(row) for row in self._render_cells())
+
+    def render(self) -> str:
+        cells = self._render_cells()
         column_header = "     " + " ".join(str(column % 10) for column in range(self.width))
         separator = "    +" + "-" * (2 * self.width + 1) + "+"
         rendered_rows = [
