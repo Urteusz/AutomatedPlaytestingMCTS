@@ -171,7 +171,7 @@ Trzeci ruch bohatera potwierdzony niezależnie: dopiero po wejściu w wiersz 15
 goblin (start `[15, 3]`) łapie linię wzroku, rusza się najkrótszą ścieżką
 w stronę bohatera i ginie wchodząc na pułapkę `[15, 2]`, leżącą dokładnie
 między nimi — zgodne z prawym panelem Fig. 1. Zamrożone jako
-`tests/domain/test_rules_engine.py::test_map02_matches_md2_figure1_after_three_north_moves`.
+`../tests/domain/test_rules_engine.py::test_map02_matches_md2_figure1_after_three_north_moves`.
 
 Prawy panel Fig. 1 rozstrzygnął też **zachowanie wizarda bez linii wzroku**:
 oba wizardy (`[1, 3]` i `[13, 7]`) stoją tam po trzech turach na swoich polach,
@@ -212,4 +212,4 @@ rozbieżność nie zniknęła po cichu.
 
 Udane uruchomienie potwierdza wymiary, symbole, liczebności z Fig. 3,
 niezmienniki z artykułu, pary portali, spójność (connectivity), obrazy źródłowe
-i zamrożone sumy kontrolne. Ten sam warunek sprawdza `tests/data/test_stage0.py`.
+i zamrożone sumy kontrolne. Ten sam warunek sprawdza `../tests/data/test_stage0.py`.

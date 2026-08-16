@@ -104,4 +104,4 @@ znormalizowaną do `[0,1]` przy `c = √2`.
 | `src/minidungeons/domain/rules.py` | wczytywanie konfiguracji |
 | `src/minidungeons/domain/engine.py` | deterministyczny, klonowalny silnik |
 | `src/minidungeons/domain/personas.py` | funkcje użyteczności person |
-| `tests/domain/test_rules_engine.py` | testy mechanik i sytuacji brzegowych |
+| `../../tests/domain/test_rules_engine.py` | testy mechanik i sytuacji brzegowych |
