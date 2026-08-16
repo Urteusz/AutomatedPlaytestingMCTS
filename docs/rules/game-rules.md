@@ -10,8 +10,13 @@ Baza wiedzy o logice gry i pomiarach. Warstwa wizualna nie musi być odtworzona
 | `docs/reference/articles/minidungeons_2.pdf` | jak działa gra: obiekty, przeciwnicy, oszczep, portale, kolejność tur |
 | `docs/reference/articles/1802.06881v1_MCTS.pdf` | jak autorzy badali persony: metryki (Table I), 11 map, protokół MCTS |
 
-W razie konfliktu dla eksperymentu ważniejszy jest artykuł MCTS — dlatego
-bohater startuje z 10 HP, a nie z zakresu 1–10 HP z opisu MD2.
+W razie konfliktu **parametrów eksperymentu** (HP startowe, liczba map,
+budżet prób) ważniejszy jest artykuł MCTS — dlatego bohater startuje z 10 HP,
+a nie z zakresu 1–10 HP z opisu MD2. Dla **mechaniki gry** rozstrzyga zwykle
+MD2, bo to praca dedykowana opisowi gry — z jednym wyjątkiem: zachowanie
+wizarda bez linii wzroku bierzemy z artykułu MCTS, bo jego wersja jest
+bardziej szczegółowa i zgodna z Fig. 1 (patrz `wizard_without_los`
+w `decisions.md`).
 
 Ten dokument jest w trybie twierdzącym: opisuje, jak gra działa w tej
 implementacji. Miejsca, w których publikacje milczą, są rozstrzygnięte
@@ -112,15 +117,30 @@ Decyzje: `equal_path_tie_break`, `illegal_move`, `npc_exit_behavior`.
 
 ## 7. Linia wzroku
 
-- linia wzroku działa **tylko w czterech kierunkach osiowych**;
-- blokują ją wyłącznie ściany;
-- postacie i obiekty jej nie blokują;
-- dystans liczymy liczbą kafli w osi.
+- geometria jest **konfigurowalna** w `data/rules/md2_rules.json` w sekcji
+  `line_of_sight`, bo publikacje jej nie definiują — mówią wyłącznie
+  „unbroken line of sight";
+- domyślnie `geometry: "axis8"` — cztery osie **oraz** dokładne skosy 45°;
+  pozostałe wartości to `axis4` (tylko osie) i `raycast` (dowolny kąt);
+- blokują ją wyłącznie ściany; postacie i obiekty jej nie blokują;
+- `corners` decyduje, co się dzieje, gdy promień trafia dokładnie w narożnik
+  czterech kafli: `permissive` (domyślnie — blokuje wtedy i tylko wtedy, gdy
+  **oba** kafle boczne są ścianami, czyli szczelina ma zerową szerokość),
+  `strict` (blokuje, gdy którykolwiek bok jest ścianą) i `transparent`
+  (narożnik nigdy nie blokuje);
+- `distance_metric` (`chebyshev` domyślnie, alternatywa `manhattan`) daje
+  dystans dla zasięgu czaru czarodzieja i dla wyboru najbliższego celu przez
+  bloba i ogra; przy `axis4` obie metryki są równoważne, różnią się tylko na
+  skosach.
 
 To jedna z najważniejszych decyzji rekonstrukcyjnych, bo wpływa na ruch
-wszystkich przeciwników i na dostępność rzutu oszczepem.
+wszystkich przeciwników i na dostępność rzutu oszczepem. Dlaczego nie osie:
+na `map02` (= MD2 Fig. 1) ogr z `(12,2)` widzi osiowo tylko `(12,1)` i
+`(13,2)`, a bohater nie dojdzie do żadnego z nich w trzech turach — więc pod
+`axis4` nie może się ruszyć, a na prawym panelu Fig. 1 zjadł skarb z `(13,1)`
+i stoi na `(14,1)`. Test: `test_map02_matches_md2_figure1_after_three_north_moves`.
 
-Decyzje: `line_of_sight_geometry`.
+Decyzje: `line_of_sight_geometry`, `los_distance_metric`.
 
 ## 8. Bohater
 
@@ -212,11 +232,15 @@ Decyzje: `goblin_avoidance_scope`, `blocked_path_detour`.
 
 - jeśli ma nieprzerwaną linię wzroku do bohatera w zasięgu **5 kafli włącznie**,
   rzuca zaklęcie zadające 1 obrażenie;
-- w przeciwnym razie podchodzi o 1 kafel w stronę bohatera — ale tylko przy
-  zachowanej linii wzroku; bez niej stoi;
+- jeśli ma linię wzroku, ale bohater jest **dalej niż 5 kafli**, podchodzi
+  o 1 kafel w jego stronę;
+- **bez linii wzroku stoi** — żadna klauzula w artykule MCTS nie pozwala mu
+  wtedy działać (`monsters.wizard.moves_without_los: false` w regułach;
+  ustawienie `true` włącza sprzeczną wersję z opisu MD2, w której podchodzi
+  zawsze);
 - nigdy nie atakuje i nie rusza się w tej samej turze;
 - ma 1 HP i **nie zadaje obrażeń przez kolizję**;
-- dystans liczony jest po osi linii wzroku;
+- dystans to `line_of_sight.distance_metric` (§7);
 - omija gobliny i wizardy tak samo jak goblin.
 
 Decyzje: `wizard_without_los`, `goblin_avoidance_scope`, `blocked_path_detour`.
@@ -355,19 +379,17 @@ Pełna lista „many others" nie jest znana i nie da się jej odtworzyć.
 
 `PD`, `MS`, `TO` i `IC` są wartościami względnymi (ratio).
 
-Dwie metryki artykuł zostawia niedomknięte i wymagają jawnej interpretacji
-w pracy:
-
-- **`PE`** — artykuł maksymalizuje `PE`, podaje `PE = 0` po osiągnięciu wyjścia
-  i nie podaje wzoru. Przyjęto `PE = -dystans / maksymalny dystans` po
-  statycznej najkrótszej ścieżce: **0 na wyjściu, −1 w najdalszym punkcie
-  mapy**. Portale są pomijane. To jedyny wariant spełniający jednocześnie
-  „maksymalizuj" i „zero na wyjściu".
-- **`IC`** — opis Completionisty obejmuje potwory, a notka pod Table I nazywa
-  `IC` obiektami nie-potworami. Przyjęto wariant zgodny z opisem persony:
-  zabici przez bohatera wrogowie + wypite mikstury + otwarte skarby, dzielone
-  przez ich początkową sumę. Silnik raportuje dodatkowo
-  `interactive_non_monster_ratio`, żeby zachować przejrzystość.
+- **`PE`** artykuł zostawia niedomknięte: maksymalizuje `PE` i podaje
+  `PE = 0` po osiągnięciu wyjścia, ale nie podaje wzoru. Przyjęto **`PE = 0`
+  na kaflu wyjścia, `−1` wszędzie indziej** — jedyny wariant, który na
+  baseline UCB1 odtwarza win rate i kolejność person z artykułu (patrz
+  `docs/rules/decisions.md`).
+- **`IC`** jest rozstrzygnięte arytmetycznie: `IC` = zabici przez bohatera
+  wrogowie + wypite mikstury + otwarte skarby, dzielone przez ich początkową
+  sumę. Notka pod Table I nazywająca `IC` obiektami nie-potworami łamie
+  `IC ≤ max(PD,TO)` w każdym z 8 wierszy Table II i jest błędem redakcyjnym.
+  Silnik raportuje dodatkowo `interactive_non_monster_ratio`, żeby zachować
+  przejrzystość.
 
 Decyzje: `proximity_to_exit`, `interactive_objects_consumed`,
 `monsters_slain_denominator`.

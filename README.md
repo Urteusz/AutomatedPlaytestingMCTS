@@ -22,6 +22,11 @@ flowchart LR
     Env --> Rules[(data/rules)]
     Env --> Maps[(data/maps/md2/benchmark)]
     Exp --> Results[(data/results/*.csv)]
+    Exp --> Traces[(data/results/*_paths.jsonl)]
+    Play[frontend/game_loop] --> Env
+    Heat[frontend/heatmap] --> Env
+    Heat --> Traces
+    Heat --> Results
 ```
 
 Agent MCTS tworzy `MiniDungeon` bezpośrednio ze ścieżki do pliku mapy — między
@@ -34,8 +39,9 @@ algorytmem a domeną nie ma warstwy serwisowej ani repozytorium.
 | `domain/engine` | stan, akcje, NPC, reguły, metryki | person, MCTS, wejścia-wyjścia |
 | `domain/personas` | funkcje użyteczności czterech person | drzewa MCTS |
 | `domain/mcts` | węzeł, UCB1, selekcja, ekspansja, rollout, propagacja | CSV, procesów, argumentów CLI |
-| `infrastructure` | kanoniczne ścieżki do zamrożonych danych | przebiegu tury |
+| `infrastructure` | kanoniczne ścieżki, zapis i odczyt śladów partii | przebiegu tury |
 | `cli` | argumenty, równoległość, zapis wyników | logiki potworów |
+| `frontend` | rysowanie planszy, ręczna rozgrywka, heatmapy | reguł gry — akcje bierze z `legal_actions()` |
 
 Zależności biegną do środka: `cli` woła `domain`, a `domain/mcts` woła
 `domain/engine`. Silnik nie wie o istnieniu MCTS. Warstwa HTTP (FastAPI,
@@ -81,6 +87,69 @@ Inny plik wskazuje `--out`:
 Drukuje układ z Tabeli II — Monsters, Potions, Treasures, Interactive Objects,
 Win Rate oraz Time — jako średnia ± 95% przedział ufności dla R, MK, TC i C.
 
+## Ręczna rozgrywka
+
+```powershell
+.\.venv\Scripts\python.exe -m src.minidungeons.frontend.game_loop --map data\maps\md2\benchmark\map04.txt
+```
+
+WSAD lub strzałki to ruch, klik w potwora z linią wzroku (albo Tab i Enter) to
+rzut oszczepem, `R` restartuje partię. Wymaga `pygame-ce`
+(`pip install -e .[gui]`).
+
+## Heatmapa odwiedzin
+
+Plansza rysowana dokładnie tak jak w ręcznej rozgrywce, z nałożoną **średnią
+liczbą wizyt bohatera na kaflu w przeliczeniu na jedną partię**: im częściej
+bohater bywał na kaflu, tym mocniejsza czerwień — od jasnego różu po ciemną
+czerwień. Kafle nieodwiedzone zostają szare. Wymaga `pygame-ce`
+(`pip install -e .[gui]`).
+
+```powershell
+.\.venv\Scripts\python.exe -m src.minidungeons.frontend.heatmap
+```
+
+Bez argumentów bierze wszystkie pliki z `data/results/`, które mają obok siebie
+ślady partii (`ucb1_pe.csv` → `ucb1_pe_paths.jsonl`). Konkretny wybór na
+start:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.minidungeons.frontend.heatmap --results data\results\ucb1_pe.csv --map map04 --persona completionist --scale sqrt
+```
+
+Pod planszą jest pasek zakładek — po jednej na personę plus `SREDNIA` na
+początku — a każda zakładka pokazuje **win rate tej persony na bieżącej mapie**,
+więc rozbicie na persony widać bez przełączania. Aktywna zakładka jest obwiedziona
+na żółto.
+
+| Klawisz | Działanie |
+| --- | --- |
+| **Tab** | następna persona; cykl domyka się z powrotem na `SREDNIA`. To samo robi klik w zakładkę |
+| ← → | mapa |
+| `F` | przełączenie pliku wyników — tym porównuje się różne przebiegi |
+| `W` | filtr: wszystkie partie / tylko wygrane / tylko przegrane |
+| `L` | skala: liniowa / sqrt / log |
+| `S` | zapis PNG do `data/results/heatmaps/` |
+
+Dwie rzeczy o liczbach, bo przechodzą do pracy:
+
+- średnia jest **na partię, nie na krok** — kafel odwiedzony dwa razy w jednej
+  partii liczy się podwójnie, więc heatmapa pokazuje też zawracanie;
+- widok zbiorczy to **średnia średnich** po personach, żeby persona z dłuższymi
+  partiami nie przesłoniła pozostałych.
+
+Skala jest **jednobarwna z monotonicznie malejącą jasnością** — to jasność, nie
+odcień, koduje wielkość. Tęcza (granat → zieleń → czerwień) była pierwszą wersją
+i była błędem: skoki odcienia sugerują kategorie, więc taką mapę czyta się tylko
+z legendy. Kroki wzięte z profilu jasności skali sekwencyjnej przeniesionego na
+czerwień; monotoniczności pilnuje test.
+
+Filtr wygranych i win rate na zakładkach pochodzą z CSV — ślad nie zapisuje
+wyniku partii. Win rate na zakładce jest zawsze z całego CSV, niezależnie od
+ustawionego filtra, bo odpowiada na pytanie „która persona radzi sobie na tej
+mapie", a nie opisuje aktualnie oglądanego podzbioru partii. Skala liniowa spłaszcza mapę, bo rozkład wizyt ma ciężki ogon; do
+oglądania rzadko odwiedzanych rejonów jest `sqrt` i `log`.
+
 ## Użycie z Pythona
 
 ```python
@@ -104,8 +173,8 @@ Ten sam kod da się zaimportować dwiema drogami i **trzeba o tym wiedzieć**:
 - `src.minidungeons...` — działa wprost z katalogu repozytorium, tak importują
   testy i tak wygląda uruchamianie przez `python -m src.minidungeons...`;
 - `minidungeons...` — nazwa pakietu z `pyproject.toml`, dostępna po
-  `pip install -e .`, używana przez skróty `minidungeons-random`
-  i `minidungeons-mcts`.
+  `pip install -e .`, używana przez skróty `minidungeons-random`,
+  `minidungeons-mcts`, `minidungeons-play` i `minidungeons-heatmap`.
 
 Python traktuje je jak **dwa osobne moduły** o niezależnym stanie. Dopóki
 mieszają się w jednym procesie, jest to źródło trudnych do wyśledzenia błędów;
@@ -118,7 +187,7 @@ data/                         niezmienne wejścia eksperymentu
   maps/md2/benchmark/         11 map, manifest i pary portali
   maps/md2/source-images/     obrazy źródłowe i siatki kontrolne
   rules/                      parametry silnika i person (JSON)
-  results/                    wyniki eksperymentów (poza gitem)
+  results/                    wyniki, ślady partii i heatmapy (poza gitem)
 docs/
   rules/                      zasady gry i decyzje rekonstrukcyjne
   project/                    plan pracy inżynierskiej
@@ -126,9 +195,11 @@ docs/
   benchmark.md                walidacja i niepewności rekonstrukcji map
 src/minidungeons/
   domain/                     silnik gry, persony, reguły i MCTS
-  infrastructure/             kanoniczne ścieżki do danych
+  infrastructure/             kanoniczne ścieżki i ślady partii
   cli/                        programy konsolowe: agent losowy i eksperyment
-  frontend/                   wizualizacja pygame — w budowie, wymaga `pygame`
+  frontend/                   pygame, wymaga extras `gui`:
+                                game_loop.py — ręczna rozgrywka
+                                heatmap.py   — heatmapa odwiedzin z policzonych przebiegów
 tests/                        testy według warstw
 tools/                        walidator zamrożonego benchmarku
 ```

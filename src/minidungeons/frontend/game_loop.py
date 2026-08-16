@@ -1,26 +1,15 @@
-"""Reczna rozgrywka w zrekonstruowanym MiniDungeons 2 na PyGame.
+"""Reczna rozgrywka w MiniDungeons 2 na PyGame.
 
-Warstwy rysujemy wprost ze stanu silnika (terrain, objects, npcs,
-javelin_position), a nie z render_plain(), bo siatka tekstowa gubi nakladajace
-sie postacie oraz HP, moc bloba i licznik ogluszenia Minitaura. Akcje bierzemy
-zawsze z legal_actions(), wiec front nie powtarza regul gry.
-"""
-
-from __future__ import annotations
+Warstwy rysujemy wprost ze stanu silnika, nie z render(), bo siatka tekstowa
+gubi nakladajace sie postacie i HP. Akcje biore z legal_actions()."""
 
 import argparse
 from collections import deque
 from pathlib import Path
+import pygame
 
-try:
-    import pygame
-except ImportError as exc:  # zaleznosc opcjonalna, extras "gui"
-    raise SystemExit("Frontend wymaga pygame-ce: pip install -e .[gui]") from exc
-
-# importy absolutne, zeby plik dzialal tez uruchomiony wprost z IDE
 from minidungeons.domain import Action, MiniDungeon
 from minidungeons.domain.engine import (
-    DIRECTION_DELTA,
     SYMBOL_BY_NPC_KIND,
     SYMBOL_BY_OBJECT,
     WALL,
@@ -33,14 +22,14 @@ block_size = 40
 block_gap = 1
 block_max_size = block_size + block_gap
 
-DEFAULT_MAP = MD2_BENCHMARK_DIR / "map01.txt"
+DEFAULT_MAP = MD2_BENCHMARK_DIR / "map02.txt"
 
-HUD_HEIGHT = 104
+HUD_HEIGHT = 94
 MIN_WINDOW_WIDTH = 640
 LOG_LINES = 2
 FPS = 60
-BLOCKED_FLASH_MS = 220
 
+# wejscie i wyjscie rysujemy sama litera, wiec nie maja tu koloru klocka
 color_scheme = {
     "#": (0, 0, 0),
     "@": (63, 72, 204),
@@ -52,31 +41,27 @@ color_scheme = {
     "g": (153, 190, 37),
     "w": (91, 22, 33),
     "r": (232, 175, 41),
-    "X": (57, 57, 57),
     "o": (110, 130, 42),
     "j": (115, 41, 23),
 }
 COLOR_FLOOR = (200, 200, 200)
-COLOR_ENTRANCE = (156, 156, 166)
 COLOR_TARGET = (255, 214, 0)
-COLOR_BLOCKED = (208, 44, 44)
 COLOR_OUTLINE = (18, 18, 20)
+COLOR_GLYPH = (255, 255, 255)  # litery i liczby postaci oraz obiektow
+COLOR_GATE_GLYPH = (57, 57, 57)  # E i X - same litery, bez klocka pod spodem
 COLOR_TEXT = (236, 236, 236)
 COLOR_TEXT_DIM = (152, 152, 160)
-COLOR_HP_BAR = (214, 48, 62)
-COLOR_HP_BAR_BACK = (70, 42, 46)
 COLOR_PORTAL_LINK = (40, 96, 100)
 
 MOVE_KEYS = {
-    pygame.K_w: "N", pygame.K_UP: "N",
-    pygame.K_s: "S", pygame.K_DOWN: "S",
-    pygame.K_a: "W", pygame.K_LEFT: "W",
-    pygame.K_d: "E", pygame.K_RIGHT: "E",
+    pygame.K_w: "N",
+    pygame.K_s: "S",
+    pygame.K_a: "W",
+    pygame.K_d: "E",
 }
 
 def set_block_size(size: int) -> None:
     """Ustawia rozmiar kafla dla calego modulu (opcja --tile-size)."""
-
     global block_size, block_max_size
     block_size = size
     block_max_size = size + block_gap
@@ -96,9 +81,10 @@ def cell_center(cell: Coord) -> tuple[float, float]:
 
 
 def cell_at(pos, env: MiniDungeon) -> Coord | None:
-    """Piksel okna -> (wiersz, kolumna); None poza plansza, np. w pasku HUD."""
+    """Piksel okna na (wiersz, kolumna), None poza plansza."""
 
-    column, row = pos[0] // block_max_size, pos[1] // block_max_size
+    column = pos[0] // block_max_size
+    row = pos[1] // block_max_size
     if 0 <= row < env.height and 0 <= column < env.width:
         return row, column
     return None
@@ -106,8 +92,7 @@ def cell_at(pos, env: MiniDungeon) -> Coord | None:
 
 
 def check_npc(pos, env: MiniDungeon) -> NPC | None:
-    """NPC pod kursorem. Dwa NPC nigdy nie stoja na jednym kaflu (kolizje
-    i scalanie blobow rozwiazuje silnik), wiec indeks po pozycji wystarcza."""
+    """NPC pod kursorem. Dwa NPC nigdy nie stoja na jednym kaflu."""
 
     cell = cell_at(pos, env)
     if cell is None:
@@ -119,8 +104,7 @@ def check_npc(pos, env: MiniDungeon) -> NPC | None:
 
 
 def throw_targets(env: MiniDungeon) -> dict[Coord, Action]:
-    """Pozycja -> legalny rzut. Zrodlem jest legal_actions(), wiec front nie
-    liczy linii wzroku ponownie i nie rozjedzie sie z silnikiem."""
+    """Pozycja na legalny rzut, wprost z legal_actions()."""
 
     targets: dict[Coord, Action] = {}
     for action in env.legal_actions():
@@ -132,7 +116,7 @@ def throw_targets(env: MiniDungeon) -> dict[Coord, Action]:
 
 
 def describe_event(event: dict) -> str | None:
-    """Krotki opis zdarzenia ze step(); None dla szumu (ruchy i postoje NPC)."""
+    """Opis zdarzenia ze step(). None dla ruchow i postojow NPC."""
 
     kind = event.get("type")
     if kind == "hero_damaged":
@@ -181,7 +165,7 @@ def background_render(screen, env: MiniDungeon):
             is_wall = env.terrain[row][column] == WALL
             color = color_scheme["#"] if is_wall else COLOR_FLOOR
             pygame.draw.rect(screen, color, cell_rect((row, column)))
-    glyph_render(screen, env.entrance, "E", COLOR_ENTRANCE)
+    glyph_render(screen, env.entrance, "E", COLOR_GATE_GLYPH)
     for source, destination in env.portal_links.items():
         if source < destination:  # kazda para portali raz
             pygame.draw.line(
@@ -190,10 +174,13 @@ def background_render(screen, env: MiniDungeon):
 
 
 def object_layer_render(screen, env: MiniDungeon):
-    """Skarby, mikstury, pulapki, portale i wyjscie - warstwa env.objects."""
+    """Skarby, mikstury, pulapki, portale i wyjscie."""
 
     for cell, kind in env.objects.items():
         symbol = SYMBOL_BY_OBJECT[kind]
+        if kind == "exit":  # sam znak, tak jak wejscie
+            glyph_render(screen, cell, symbol, COLOR_GATE_GLYPH)
+            continue
         color = color_scheme[symbol]
         rect = cell_rect(cell)
         if kind == "trap":
@@ -204,12 +191,12 @@ def object_layer_render(screen, env: MiniDungeon):
             pygame.draw.circle(screen, color, rect.center, block_size * 0.28)
         else:
             pygame.draw.rect(screen, color, rect.inflate(-block_size * 0.3, -block_size * 0.3))
-        if kind in {"exit", "treasure"}:
-            glyph_render(screen, cell, symbol, COLOR_TEXT)
+        if kind == "treasure":
+            glyph_render(screen, cell, symbol, COLOR_GLYPH)
 
 
 def javelin_render(screen, env: MiniDungeon):
-    """Lezacy oszczep - render_plain() stawial tu 'j', ale NPC go nadpisywal."""
+    """Lezacy oszczep."""
 
     if env.javelin_position is None:
         return
@@ -232,12 +219,12 @@ def npc_render(screen, npc: NPC):
     rect = cell_rect(npc.position).inflate(-block_size * 0.2, -block_size * 0.2)
     pygame.draw.rect(screen, color_scheme[symbol], rect)
     pygame.draw.rect(screen, COLOR_OUTLINE, rect, 1)
-    glyph_render(screen, npc.position, symbol, COLOR_OUTLINE)
-    badge_render(screen, npc)
+    glyph_render(screen, npc.position, symbol, COLOR_GLYPH)
+    badge_render(screen, npc, rect)
 
 
-def badge_render(screen, npc: NPC):
-    """Stan potwora, ktorego siatka tekstowa nie oddaje: ogluszenie, moc, HP."""
+def badge_render(screen, npc: NPC, sprite: pygame.Rect):
+    """Stan potwora: ogluszenie, moc, HP."""
 
     if npc.stunned_actions > 0:
         label = f"z{npc.stunned_actions}"
@@ -249,9 +236,9 @@ def badge_render(screen, npc: NPC):
         label = str(npc.hp)
     else:
         return
-    text = font(max(11, int(block_size * 0.45))).render(label, True, COLOR_TEXT)
-    rect = cell_rect(npc.position)
-    screen.blit(text, text.get_rect(bottomright=(rect.right - 1, rect.bottom - 1)))
+    text = font(max(10, int(block_size * 0.4))).render(label, True, COLOR_GLYPH)
+    inset = max(2, int(block_size * 0.08))
+    screen.blit(text, text.get_rect(bottomright=(sprite.right - inset, sprite.bottom - inset)))
 
 
 def player_render(screen, env: MiniDungeon):
@@ -270,78 +257,56 @@ def targets_render(screen, env: MiniDungeon, targets: dict[Coord, Action], activ
         )
 
 
-def blocked_render(screen, cell: Coord | None):
-    if cell is not None:
-        pygame.draw.rect(screen, COLOR_BLOCKED, cell_rect(cell), 3)
-
-
 def glyph_render(screen, cell: Coord, symbol: str, color):
     if block_size < 16:  # przy malym kaflu litery robia sie nieczytelne
         return
     text = font(max(12, int(block_size * 0.85))).render(symbol, True, color)
-    screen.blit(text, text.get_rect(center=cell_center(cell)))
+    ink = text.get_bounding_rect()  # centrujemy widoczne piksele, nie caly font
+    center_x, center_y = cell_center(cell)
+    screen.blit(text, (round(center_x - ink.centerx), round(center_y - ink.centery)))
 
 
-def hud_render(screen, env: MiniDungeon, log, targets: dict[Coord, Action]):
-    metrics = env.metric_values()
+def hud_render(screen, env: MiniDungeon, log):
     top = block_max_size * env.height + 8
 
-    bar = pygame.Rect(10, top, 150, 14)
-    pygame.draw.rect(screen, COLOR_HP_BAR_BACK, bar)
-    filled = int(bar.width * env.hero_hp / env.PLAYER_MAX_HP)
-    pygame.draw.rect(screen, COLOR_HP_BAR, pygame.Rect(bar.left, bar.top, filled, bar.height))
-
-    javelin = "w rece" if env.javelin_held else f"na {env.javelin_position}"
     screen.blit(
         font(24).render(
-            f"HP {env.hero_hp}/{env.PLAYER_MAX_HP}    oszczep: {javelin}    "
-            f"cele: {len(targets)}    tura {metrics['turns']}  kroki {metrics['steps']}",
+            f"HP {env.hero_hp}/{env.PLAYER_MAX_HP}    "
+            f"javelin: {'true' if env.javelin_held else 'false'}    "
+            f"tura {env.metrics.turns_taken}",
             True, COLOR_TEXT,
         ),
-        (bar.right + 12, top - 2),
+        (10, top),
     )
     screen.blit(
         font(20).render(
-            f"mikstury {metrics['potions']} ({metrics['potion_ratio']:.0%})   "
-            f"skarby {metrics['treasures']} ({metrics['treasure_ratio']:.0%})   "
-            f"potwory {metrics['monsters']} ({metrics['monster_ratio']:.0%})   "
-            f"knockouty {metrics['minitaur_knockouts']}   pulapki {metrics['traps']}   "
-            f"portale {metrics['teleports']}   rzuty {metrics['javelins']}",
-            True, COLOR_TEXT,
-        ),
-        (10, top + 22),
-    )
-    screen.blit(
-        font(20).render(
-            "WSAD/strzalki - ruch,  klik lub Tab+Enter - rzut oszczepem,  R - restart,  Esc - koniec",
+            "WSAD - ruch,  klik - rzut oszczepem,  R - restart,  Esc - koniec",
             True, COLOR_TEXT_DIM,
         ),
-        (10, top + 42),
+        (10, top + 24),
     )
     for index, entry in enumerate(log):
-        screen.blit(font(20).render(entry, True, COLOR_TEXT_DIM), (10, top + 62 + index * 18))
+        screen.blit(font(20).render(entry, True, COLOR_TEXT_DIM), (10, top + 44 + index * 18))
 
 
-def banner_render(screen, env: MiniDungeon, width: int):
-    """Ekran konca gry - bez niego petla kreci sie dalej, a klawisze milcza."""
+def banner_render(screen, env: MiniDungeon):
+    """Ekran konca gry na calym oknie: tylko wynik."""
 
-    map_height = block_max_size * env.height
-    overlay = pygame.Surface((width, map_height), pygame.SRCALPHA)
+    width, height = screen.get_size()
+    overlay = pygame.Surface((width, height), pygame.SRCALPHA)
     overlay.fill((12, 12, 16, 190))
     screen.blit(overlay, (0, 0))
     won = env.outcome == "exit"
-    text = font(46).render("WYJSCIE" if won else "SMIERC", True,
+    text = font(64).render("Wygrana" if won else "Przegrana", True,
                            (96, 220, 120) if won else (226, 72, 72))
-    screen.blit(text, text.get_rect(center=(width // 2, map_height // 2 - 16)))
-    hint = font(24).render("R - nowa proba,  Esc - wyjscie", True, COLOR_TEXT)
-    screen.blit(hint, hint.get_rect(center=(width // 2, map_height // 2 + 24)))
+    screen.blit(text, text.get_rect(center=(width // 2, height // 2)))
 
 
 _fonts: dict[int, pygame.font.Font] = {}
 
 
 def font(size: int) -> pygame.font.Font:
-    """Fonty tworzone raz - poprzednia wersja robila Font() w kazdej klatce."""
+    """Fonty tworzone raz, nie w kazdej klatce."""
 
     if size not in _fonts:
         _fonts[size] = pygame.font.Font(None, size)
@@ -350,16 +315,8 @@ def font(size: int) -> pygame.font.Font:
 
 # petla gry --------
 
-def blocked_cell_for(action: Action, env: MiniDungeon) -> Coord | None:
-    if action.kind != "move":
-        return None
-    row, column = env.hero_position
-    delta_row, delta_column = DIRECTION_DELTA[action.direction]
-    return row + delta_row, column + delta_column
-
-
 def main(argv: list[str] | None = None) -> None:
-    """Punkt wejscia `minidungeons-play` - dziala tez bez argumentow."""
+    """Punkt wejscia minidungeons-play."""
 
     args = build_parser().parse_args(argv)
     if not args.map.exists():
@@ -367,7 +324,6 @@ def main(argv: list[str] | None = None) -> None:
     if args.tile_size:
         set_block_size(args.tile_size)
 
-    # konstruktor sam czyta mape, reguly i portale - nic wiecej nie trzeba wolac
     env = MiniDungeon(args.map, rules_path=args.rules, portal_pairs_path=args.portal_pairs)
     print(f"Mapa: {args.map.name} ({env.height}x{env.width})  wejscie: {env.entrance}")
 
@@ -387,9 +343,6 @@ def run(env: MiniDungeon, *, fps: int = FPS) -> None:
 
     log: deque[str] = deque(maxlen=LOG_LINES)
     targets = throw_targets(env)
-    selected: Coord | None = None
-    blocked_cell: Coord | None = None
-    blocked_at = 0
     running = True
 
     while running:
@@ -397,53 +350,30 @@ def run(env: MiniDungeon, *, fps: int = FPS) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            # KEYDOWN daje jedna akcje na zdarzenie; get_just_pressed() pozwalal
-            # na dwa wcisniecia w jednej klatce (W+D konczylo sie ruchem na E)
             elif event.type == pygame.KEYDOWN:
                 if event.key in {pygame.K_ESCAPE, pygame.K_q}:
                     running = False
                 elif event.key == pygame.K_r:
                     env.reset()
                     log.clear()
-                    selected, blocked_cell = None, None
                     targets = throw_targets(env)
-                elif event.key == pygame.K_TAB and targets:
-                    cells = sorted(targets)
-                    offset = -1 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1
-                    index = cells.index(selected) + offset if selected in cells else 0
-                    selected = cells[index % len(cells)]
                 elif event.key in MOVE_KEYS:
                     action = Action.move(MOVE_KEYS[event.key])
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 npc = check_npc(event.pos, env)
-                cell = cell_at(event.pos, env)
                 if npc is not None and npc.position in targets:
-                    selected = npc.position
                     action = targets[npc.position]
-                elif cell is not None:
-                    # sciana, puste pole albo potwor bez linii wzroku
-                    blocked_cell, blocked_at = cell, pygame.time.get_ticks()
 
-        if action is not None and not env.done:
-            if action in env.legal_actions():
-                _, info = env.step(action)
-                for event in info["events"]:
-                    described = describe_event(event)
-                    if described:
-                        log.append(described)
-                targets = throw_targets(env)
-                if selected not in targets:
-                    selected = None
-            else:
-                # nielegalny ruch nie moze byc cichy - mrugamy kaflem docelowym
-                blocked_cell = blocked_cell_for(action, env)
-                blocked_at = pygame.time.get_ticks()
-
-        if blocked_cell is not None and pygame.time.get_ticks() - blocked_at > BLOCKED_FLASH_MS:
-            blocked_cell = None
+        if action is not None and not env.done and action in env.legal_actions():
+            _, info = env.step(action)
+            for event in info["events"]:
+                described = describe_event(event)
+                if described:
+                    log.append(described)
+            targets = throw_targets(env)
 
         hovered = cell_at(pygame.mouse.get_pos(), env)
-        active = hovered if hovered in targets else selected
+        active = hovered if hovered in targets else None
 
         screen.fill(COLOR_OUTLINE)
         background_render(screen, env)
@@ -452,10 +382,9 @@ def run(env: MiniDungeon, *, fps: int = FPS) -> None:
         targets_render(screen, env, targets, active)
         npc_layer_render(screen, env)
         player_render(screen, env)
-        blocked_render(screen, blocked_cell)
-        hud_render(screen, env, log, targets)
+        hud_render(screen, env, log)
         if env.done:
-            banner_render(screen, env, screen_width)
+            banner_render(screen, env)
 
         pygame.display.flip()
         clock.tick(fps)

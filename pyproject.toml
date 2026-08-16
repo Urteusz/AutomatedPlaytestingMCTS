@@ -18,6 +18,7 @@ gui = ["pygame-ce>=2.5"]
 minidungeons-random = "minidungeons.cli.random_agent:main"
 minidungeons-mcts = "minidungeons.cli.mcts_experiment:main"
 minidungeons-play = "minidungeons.frontend.game_loop:main"
+minidungeons-heatmap = "minidungeons.frontend.heatmap:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

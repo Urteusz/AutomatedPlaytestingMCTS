@@ -10,11 +10,13 @@
   "movement": {
     "directions": ["N", "E", "S", "W"]
   },
-  "metrics": {
-    "proximity_to_exit": "binary"
-  },
   "pathfinding": {
     "neighbor_order": ["N", "E", "S", "W"]
+  },
+  "line_of_sight": {
+    "geometry": "axis8",
+    "corners": "permissive",
+    "distance_metric": "chebyshev"
   },
   "javelin": {
     "damage": 1
@@ -25,7 +27,7 @@
   },
   "monsters": {
     "goblin": {"hp": 1, "collision_damage": 1},
-    "wizard": {"hp": 1, "collision_damage": 0, "ranged_damage": 1, "ranged_range": 5},
+    "wizard": {"hp": 1, "collision_damage": 0, "ranged_damage": 1, "ranged_range": 5, "moves_without_los": false},
     "blob": {"initial_power": 1, "max_power": 3},
     "ogre": {"hp": 2, "collision_damage": 2},
     "minitaur": {"hp": null, "collision_damage": 1, "stun_actions": 3}

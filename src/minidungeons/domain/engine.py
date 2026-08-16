@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Iterable, Iterator
 
-from .rules import GameRules, PROJECT_ROOT, RulesError, load_rules
+from minidungeons.domain.rules import GameRules, PROJECT_ROOT, load_rules
 
 Coord = tuple[int, int]
 WALL, EMPTY, ENTRANCE, EXIT = "#", ".", "E", "X"
@@ -34,6 +34,10 @@ SYMBOL_BY_NPC_KIND = {value: key for key, value in NPC_KIND_BY_SYMBOL.items()}
 ALLOWED_MAP_SYMBOLS = {WALL, EMPTY, ENTRANCE, *OBJECT_BY_SYMBOL, *NPC_KIND_BY_SYMBOL}
 
 DIRECTION_DELTA = {"N": (-1, 0), "E": (0, 1), "S": (1, 0), "W": (0, -1)}
+
+LOS_GEOMETRIES = frozenset({"axis4", "axis8", "raycast"})
+LOS_CORNER_RULES = frozenset({"transparent", "permissive", "strict"})
+LOS_DISTANCE_METRICS = frozenset({"chebyshev", "manhattan"})
 
 
 @dataclass(frozen=True, order=True)
@@ -116,26 +120,13 @@ class MiniDungeon:
         self.map_path = Path(map_path).resolve()
         self.rules: GameRules = load_rules(rules_path)
         self.PLAYER_MAX_HP = int(self.rules.value("hero", "max_hp"))
+        self._load_line_of_sight_rules()
+        self.wizard_moves_without_los = bool(
+            self.rules.value("monsters", "wizard", "moves_without_los")
+        )
         self._load_blueprint()
         self.portal_links = self._load_portal_links(portal_pairs_path, portal_pairs)
-        self._exit_distances = self._static_distances(self.exit)
-        self._max_exit_distance = max(self._exit_distances.values(), default=1) or 1
-        self._proximity_mode = self._load_proximity_mode()
         self.reset()
-
-    def _load_proximity_mode(self) -> str:
-        """Ktora interpretacja PE obowiazuje; patrz docs/rules/decisions.md."""
-
-        try:
-            mode = str(self.rules.value("metrics", "proximity_to_exit"))
-        except RulesError:
-            # starsze pliki regul nie znaja parametru; zachowujemy ich zachowanie
-            return "graded"
-        if mode not in ("binary", "graded"):
-            raise ValueError(
-                f"Unknown proximity_to_exit mode {mode!r}; expected 'binary' or 'graded'"
-            )
-        return mode
 
     def _load_blueprint(self) -> None:
         try:
@@ -302,18 +293,9 @@ class MiniDungeon:
         return numerator / denominator if denominator else 0.0
 
     def proximity_to_exit(self) -> float:
-        """PE wedlug wariantu z regul; oba spelniaja PE = 0 na wyjsciu.
+        """PE = 0 na kaflu wyjscia, -1 wszedzie indziej."""
 
-        "binary"  - 0 na wyjsciu, -1 wszedzie indziej; odtwarza win rate
-                    baseline'u UCB1 z artykulu (patrz decisions.md);
-        "graded"  - 0 przy wyjsciu, -1 w najdalszym punkcie mapy, liniowo
-                    po statycznej najkrotszej sciezce.
-        """
-
-        if self._proximity_mode == "binary":
-            return 0.0 if self.hero_position == self.exit else -1.0
-        distance = self._exit_distances.get(self.hero_position)
-        return -1.0 if distance is None else -distance / self._max_exit_distance
+        return 0.0 if self.hero_position == self.exit else -1.0
 
     def legal_actions(self) -> tuple[Action, ...]:
         if self.done:
@@ -577,28 +559,30 @@ class MiniDungeon:
         return self._move_npc_or_stay(npc, next_position, reason="no_path")
 
     def _act_wizard(self, npc: NPC) -> list[dict[str, object]]:
-        if not self.has_line_of_sight(npc.position, self.hero_position):
+        # MCTS §IV: czar w LOS do 5 kafli, podejscie w LOS powyzej 5 kafli, bez
+        # LOS zadna klauzula nie pozwala dzialac. Opis MD2 mowi przy tej samej
+        # regule "otherwise" bez warunku LOS - patrz `wizard_without_los`.
+        if self.has_line_of_sight(npc.position, self.hero_position):
+            distance = self.sight_distance(npc.position, self.hero_position)
+            attack_range = int(self.rules.value("monsters", "wizard", "ranged_range"))
+            if distance <= attack_range:
+                damage = int(self.rules.value("monsters", "wizard", "ranged_damage"))
+                events = [{"type": "wizard_spell", "actor_id": npc.npc_id, "damage": damage}]
+                events.extend(self._damage_hero(damage, source="wizard_spell"))
+                return events
+        elif not self.wizard_moves_without_los:
             return [{"type": "npc_stay", "actor_id": npc.npc_id, "reason": "no_los"}]
-        distance = self._axis_distance(npc.position, self.hero_position)
-        attack_range = int(self.rules.value("monsters", "wizard", "ranged_range"))
-        if distance is not None and distance <= attack_range:
-            damage = int(self.rules.value("monsters", "wizard", "ranged_damage"))
-            events = [{"type": "wizard_spell", "actor_id": npc.npc_id, "damage": damage}]
-            events.extend(self._damage_hero(damage, source="wizard_spell"))
-            return events
         next_position = self._next_step_bfs(npc.position, self.hero_position, npc.npc_id)
         return self._move_npc_or_stay(npc, next_position, reason="no_path")
 
     def _act_target_seeker(self, npc: NPC, *, preferred_object: str) -> list[dict[str, object]]:
         candidates: list[tuple[int, int, int, int, Coord]] = []
         if self.has_line_of_sight(npc.position, self.hero_position):
-            distance = self._axis_distance(npc.position, self.hero_position)
-            assert distance is not None
+            distance = self.sight_distance(npc.position, self.hero_position)
             candidates.append((distance, 1, self.hero_position[0], self.hero_position[1], self.hero_position))
         for position, object_kind in self.objects.items():
             if object_kind == preferred_object and self.has_line_of_sight(npc.position, position):
-                distance = self._axis_distance(npc.position, position)
-                assert distance is not None
+                distance = self.sight_distance(npc.position, position)
                 candidates.append((distance, 0, position[0], position[1], position))
         if not candidates:
             return [{"type": "npc_stay", "actor_id": npc.npc_id, "reason": "no_target"}]
@@ -735,31 +719,98 @@ class MiniDungeon:
             return npc.power
         return int(self.rules.value("monsters", npc.kind, "collision_damage"))
 
+    def _load_line_of_sight_rules(self) -> None:
+        """Geometria LOS nie jest zdefiniowana w publikacjach - patrz
+        `line_of_sight_geometry` w docs/rules/decisions.md. Trzymamy ja w
+        regulach, zeby dalo sie porownac warianty na benchmarku."""
+
+        self.los_geometry = str(self.rules.value("line_of_sight", "geometry"))
+        self.los_corners = str(self.rules.value("line_of_sight", "corners"))
+        self.los_distance_metric = str(self.rules.value("line_of_sight", "distance_metric"))
+        for value, allowed, name in (
+                (self.los_geometry, LOS_GEOMETRIES, "geometry"),
+                (self.los_corners, LOS_CORNER_RULES, "corners"),
+                (self.los_distance_metric, LOS_DISTANCE_METRICS, "distance_metric"),
+        ):
+            if value not in allowed:
+                raise ValueError(
+                    f"Unknown line_of_sight.{name}: {value!r}; expected one of {sorted(allowed)}"
+                )
+
     def has_line_of_sight(
             self, start: Coord, end: Coord, *, max_distance: int | None = None,
     ) -> bool:
-        # widac tylko w linii prostej wzdluz wiersza lub kolumny
-        distance = self._axis_distance(start, end)
-        if distance is None or distance == 0:
+        if start == end or not self._is_passable(end):
             return False
-        if max_distance is not None and distance > max_distance:
-            return False
-        row_step = 0 if start[0] == end[0] else (1 if end[0] > start[0] else -1)
-        column_step = 0 if start[1] == end[1] else (1 if end[1] > start[1] else -1)
-        position = (start[0] + row_step, start[1] + column_step)
-        while position != end:
-            if self.terrain[position[0]][position[1]] == WALL:
+        delta_row, delta_column = end[0] - start[0], end[1] - start[1]
+        if delta_row and delta_column:
+            if self.los_geometry == "axis4":
                 return False
-            position = (position[0] + row_step, position[1] + column_step)
-        return self.terrain[end[0]][end[1]] != WALL
+            if self.los_geometry == "axis8" and abs(delta_row) != abs(delta_column):
+                return False
+        if max_distance is not None and self.sight_distance(start, end) > max_distance:
+            return False
+        return self._sight_is_clear(start, end)
 
-    @staticmethod
-    def _axis_distance(start: Coord, end: Coord) -> int | None:
-        if start[0] == end[0]:
-            return abs(start[1] - end[1])
-        if start[1] == end[1]:
-            return abs(start[0] - end[0])
-        return None
+    def sight_distance(self, start: Coord, end: Coord) -> int:
+        """Dystans w kaflach uzywany przez zasieg czaru i wybor najblizszego celu.
+
+        Przy LOS osiowym oba warianty sprowadzaja sie do dlugosci odcinka, wiec
+        metryka ma znaczenie tylko dla skosow (patrz `los_distance_metric`)."""
+
+        if self.los_distance_metric == "manhattan":
+            return self._manhattan(start, end)
+        return max(abs(start[0] - end[0]), abs(start[1] - end[1]))
+
+    def _sight_is_clear(self, start: Coord, end: Coord) -> bool:
+        """Czy sciana przecina promien srodek-srodek miedzy `start` i `end`.
+
+        DDA na liczbach calkowitych: kolejnosc przejsc przez granice kafli
+        porownujemy przez t_wiersz = (2k-1)/(2*span_row) i analogicznie dla
+        kolumn, po przemnozeniu na krzyz. Rownosc oznacza, ze promien trafia
+        dokladnie w naroznik czterech kafli - o przejrzystosci decyduje wtedy
+        `los_corners`. Zdarza sie to dla kazdego kierunku, ktorego zredukowana
+        postac ma oba skladniki nieparzyste, nie tylko dla 45 stopni."""
+
+        delta_row, delta_column = end[0] - start[0], end[1] - start[1]
+        step_row = (delta_row > 0) - (delta_row < 0)
+        step_column = (delta_column > 0) - (delta_column < 0)
+        span_row, span_column = abs(delta_row), abs(delta_column)
+        row, column = start
+        crossings_row = crossings_column = 1
+        while crossings_row <= span_row or crossings_column <= span_column:
+            if crossings_row > span_row:
+                column += step_column
+                crossings_column += 1
+            elif crossings_column > span_column:
+                row += step_row
+                crossings_row += 1
+            else:
+                row_boundary = (2 * crossings_row - 1) * span_column
+                column_boundary = (2 * crossings_column - 1) * span_row
+                if row_boundary < column_boundary:
+                    row += step_row
+                    crossings_row += 1
+                elif column_boundary < row_boundary:
+                    column += step_column
+                    crossings_column += 1
+                else:
+                    sides = ((row + step_row, column), (row, column + step_column))
+                    if not self._corner_is_open(sides):
+                        return False
+                    row += step_row
+                    column += step_column
+                    crossings_row += 1
+                    crossings_column += 1
+            if (row, column) != end and not self._is_passable((row, column)):
+                return False
+        return True
+
+    def _corner_is_open(self, sides: tuple[Coord, Coord]) -> bool:
+        if self.los_corners == "transparent":
+            return True
+        open_sides = [self._is_passable(cell) for cell in sides]
+        return all(open_sides) if self.los_corners == "strict" else any(open_sides)
 
     def _next_step_bfs(self, start: Coord, goal: Coord, actor_id: int) -> Coord | None:
         actor_kind = self.npcs[actor_id].kind
@@ -822,18 +873,6 @@ class MiniDungeon:
             current = parents[current]  # type: ignore[assignment]
         return current
 
-    def _static_distances(self, start: Coord) -> dict[Coord, int]:
-        distances = {start: 0}
-        queue = deque([start])
-        while queue:
-            current = queue.popleft()
-            for neighbor in self._neighbors(current):
-                if neighbor in distances or not self._is_passable(neighbor):
-                    continue
-                distances[neighbor] = distances[current] + 1
-                queue.append(neighbor)
-        return distances
-
     def _neighbors(self, position: Coord) -> Iterator[Coord]:
         for token in self.rules.value("pathfinding", "neighbor_order"):
             yield self._offset(position, token)
@@ -873,10 +912,6 @@ class MiniDungeon:
             cells[row][column] = SYMBOL_BY_NPC_KIND[npc.kind]
         cells[self.hero_position[0]][self.hero_position[1]] = "@"
         return cells
-
-    def render_plain(self) -> str:
-        """Goly stan mapy: jeden znak na pole, bez naglowka, ramki i numeracji."""
-        return "\n".join("".join(row) for row in self._render_cells())
 
     def render(self) -> str:
         cells = self._render_cells()

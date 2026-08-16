@@ -1,0 +1,714 @@
+                                                                                                                                                                                                                                                             1
+
+                                        Automated Playtesting with Procedural Personas
+                                             through MCTS with Evolved Heuristics
+
+                                          Christoffer Holmga°rd1 member, IEEE, Michael Cerny Green2, Antonios Liapis3 member, IEEE, Julian
+                                                                                          Togelius2 member, IEEE
+
+                                                                      1: Department of Art + Design, Northeastern University
+                                                                       2: Tandon School of Engineering, New York University
+
+                                                                          3: Institute of Digital Games, University of Malta
+
+arXiv:1802.06881v1 [cs.AI] 19 Feb 2018     Abstract--This paper describes a method for generative player       Designer Intuition                             Live Game
+                                        modeling and its application to the automatic testing of game           and Experience                                 Analytics
+                                        content using archetypal player models called procedural per-
+                                        sonas. Theoretically grounded in psychological decision theory,        Informal            AI Agent Structured Beta
+                                        procedural personas are implemented using a variation of Monte
+                                        Carlo Tree Search (MCTS) where the node selection criteria             Playtesting Based Testing Playtesting Testing
+                                        are developed using evolutionary computation, replacing the
+                                        standard UCB1 criterion of MCTS. Using these personas we               Fig. 1: Spectrum from simple to complex design testing
+                                        demonstrate how generative player models can be applied to             methods in game development.
+                                        a varied corpus of game levels and demonstrate how different
+                                        play styles can be enacted in each level. In short, we use             characterized by different utility functions for their decision-
+                                        artificially intelligent personas to construct synthetic playtesters.  making. These utility functions capture various archetypal
+                                        The proposed approach could be used as a tool for automatic play       goals that players might hold in relation to the affordances
+                                        testing when human feedback is not readily available or when           and potential interactions of the particular game. To control
+                                        quick visualization of potential interactions is necessary. Possible   the personas, we use a variant of Monte Carlo Tree Search
+                                        applications include interactive tools during game development or      (MCTS) which is well-suited to building biased search trees
+                                        procedural content generation systems where many evaluations           in large search spaces. However, rather than applying the
+                                        must be conducted within a short time span.                            Upper Confidence Bound 1 applied to Trees (UCB1) formula
+                                                                                                               typically used for MCTS, we use genetic programming to
+                                           Index Terms--Player Modeling, Agent Controllers, Automated          evolve persona-specific evaluation formulas. This allows us to
+                                        Playtesting, Play Persona                                              find mappings between persona utility functions and state eval-
+                                                                                                               uation algorithms. We evolve well-performing game-playing
+                                                                  I. INTRODUCTION                              agents for all defined personas through this variant of MCTS.
+
+                                           One of the challenges faced by game designers is predicting            Using the evolved personas, we show how different levels
+                                        how different players will interact with the the systems and           can be automatically evaluated in terms of their playability for
+                                        content that they are crafting. Most games are complex emer-           players holding different preferences. This approach can be
+                                        gent systems that allow for a variety of interaction patterns,         useful to game creators as it provides an insight into dynamic
+                                        depending on the player's preference(s) and the interaction            properties [4] of their content as they are crafting the me-
+                                        between player, game, and any other players. Game designers            chanics. For instance, such agents could eventually be added
+                                        employ a variety of processes to imagine and observe how               directly to a game engine's editor to allow for almost real-
+                                        different types of players might respond to their content. The         time feedback during content creation. The approach can also
+                                        processes can be thought of as existing on a spectrum, ranging         be used as an automated evaluation mechanism for procedural
+                                        from the designer imagining what different types of players            content generation of game content, where procedural personas
+                                        might do, to analyzing play data of beta testers or a portion          can function as stand-ins for the game designer or different
+                                        of the player base in the case of continuously updated "live"          players when large amounts of content have to be evaluated.
+                                        games. Each approach has different strengths, weaknesses and
+                                        costs, making it relevant for different game makers or different          This paper builds on our previous work on MCTS agents
+                                        stages of the game making process [1], [2].                            with hand-crafted utility scores for the MiniDungeons 2 game
+                                                                                                               [5], expanding on those concepts by broadening the number
+                                           In this paper we suggest and demonstrate a method taking a          and utility of personas (through human design) as well as
+                                        new position on this spectrum (illustrated in Figure 1): using         discovering UCB-like criteria (through evolution) which out-
+                                        archetypal generative player models as critics for game con-           perform UCB1. More broadly, this paper enhances our earlier
+                                        tent, enabling automated playtesting and evaluation of game            definitions of procedural personas [6]­[8] which were applied
+                                        content; here specifically levels. We identify this approach as        for simulation-based level generation [9]. However, the MCTS
+                                        the use of Procedural Personas for Playtesting.                        agents used in this paper are more modular in their utility
+                                                                                                               definitions and afford far faster runtimes when performing
+                                           We evolve artificially intelligent game playing agents for
+                                        the game MiniDungeons 2 [3]. The agents, or personas, are
+                                                                 2
+
+automated playtesting. Moreover, the MCTS agents in this         not centered on player actions. As such, the procedural persona
+paper are tested on MiniDungeons 2, a far more complex game      concept is a specialized case of player modeling.
+than its predecessor MiniDungeons introduced in [6].
+                                                                    The line of work leading to this paper has been inspired by
+                         II. RELATED WORK                        the category of "Generative Action Models" in the survey on
+                                                                 player modeling by [16]. Until recently, this particular category
+   The approach taken in this paper draws on psychological       has been underpopulated.
+decision theory, persona theory from design research, and
+player modeling and agent control from computational intel-      B. Player Modeling
+ligence. The procedural persona approach draws all of these
+four strands of work together in one framework for automatic        Player modeling is the learning and use of computational
+playtesting in order to create generative player models that to  models of player preference, experience and/or behavior [17].
+some extent decide and play like human players. This section     Procedural personas, as generative player models, cover some
+briefly covers some of the foundational areas before describing  of these aspects: behavior and preferences. Other work in
+prior work in bringing these approaches together.                player modeling take different approaches to modeling play
+                                                                 behavior and preference generatively. Perhaps the most ob-
+A. Personas for Game Design                                      vious approach is to use some form of supervised learning
+                                                                 to derive a model from play traces [18], [19]. Cowley et al.
+   The use of computational methods to imbue computer game       developed the concept of behavlets, features of play derived
+characters with personality has been a focus of game AI          from observed action sequences, structured through a top-
+programming since the very beginning of the medium. As           down application of psychological temperament theory com-
+one instance, Short provides an overview of how non-player       bined with machine learning [20]. While behavlets can be used
+characters can be provided with human-like personalities under   as generative models, they do not allow for the specification
+the heading of procedural personalties [10].                     of player motivations without observations. In contrast, proce-
+                                                                 dural personas are driven by utility functions that can be either
+   The use of personas has a long history within design in       specified in a top-down manner by game or persona designers
+general and design for information technology in particular.     or formulated from play data through methods like inverse
+The approach was pioneered for software development in the       reinforcement learning [21] or evolution [14]. The particular
+early 1990s [11] as a method for structuring and operational-    agent control method that is used to formulate a policy for
+izing qualitative data gathered from design research, chiefly    procedural personas is technically arbitrary, as long as it can
+in the form of interviews. Based off interview data, a number    accept a utility function as a method of evaluation. The most
+of personas would be defined. Each of these would serve as       appropriate method may depend on the game for which the
+a specific instantiation of groups of user concerns that tended  personas are being implemented. Prior work has shown that
+to co-occur, expressed as an archetypal example user, fully      evolutionary methods and MCTS have potential for defining
+fleshed out with names, back stories, concerns and preferences.  personas for turn based roguelike games [5], [7], [14].
+
+   Canossa and Drachen transported this approach into the           Devlin et al. showed how observations of human play data
+realm of game design [12], defining personas less in terms of    can be used to bias MCTS to play the card game Spades [22].
+general life concerns and more in terms of player interaction    They use a relative entropy measure to assess the similarity of
+preferences within the space of the game. They call this new     playing styles to traces of human players. Zook et al. limited
+conceptualization play personas and operationalized their defi-  the computational resources of MCTS to simulate player
+nition through data mining, suggesting how the persona design    skill for a number of games [23] and similar findings were
+process could be supported by analyzing quantitative game        reported by Nelson et al. [24]. Another approach to biasing
+data gathered via telemetrics [13]. While play personas are      the MCTS search process to be more similar to human players
+archetypal models of player behavior inferred from experience    is described by Khalifa et al. [25]. In the study described
+or observed data, the re-projection into the game itself is      here, we take a similar approach and implement a variation of
+something that is done imaginatively by the designer(s) of       MCTS. We bias the search using evolution applying designer-
+the game: i.e. play personas let us understand what players      defined utility outcomes as the fitness function.
+have done, but do not enact what players might do. Procedural
+personas [6], [8], [14] extend the play persona idea by adding                  III. MONTE CARLO TREE SEARCH
+a game-playing, generative aspect. By capturing persona char-
+acteristics from designer specification or from observed data,      MCTS has shown considerable potential and flexibility as
+and formalizing these as utility functions, procedural personas  a game-playing algorithm [26]. For our purposes, MCTS has
+are implemented as agents that can act in the game, enabling     several desirable properties which approximate how decision
+automatic playtesting.                                           making occurs in humans: it evaluates the next best action
+                                                                 based on a utility score for a predicted future state and operates
+   Other work in the literature has investigated game testing    under uncertainty of future outcomes. It also seems that by
+without natural player data, notably [15]. The approach taken    giving an MCTS algorithm more or less resources, you can
+here differs from the approach taken in [15] as it focuses on    simulate strategic depth in human decision-making [23], [24].
+generating data from simulated players, rather than taking into
+account a larger number of potential metrics where some are
+                                                                  3
+
+A. Traditional MCTS                                               the resulting agent significantly outperformed peers that used
+                                                                  traditional UCB equations, or even agents that used UCB1
+   As discussed in Section I, MCTS is a tree search algorithm     alternatives specifically created for Go. In the General Video
+which creates biased search trees for decision processes.         Game AI (GVGAI) framework, Bravi et al. explored the
+Unlike other tree search algorithms like Minimax, breadth-        possibility of evolving UCB1 replacements that were not
+first, or depth-first, MCTS focuses on exploiting the most        specialized for one particular game [28]. In this work, we use
+promising moves to expand next, while balancing that by           the approach of Bravi et al. not to specialize the agent for
+exploring more neglected branches of the tree. The balance of     particular games, but to bias its playstyle.
+exploitation versus exploration is traditionally handled through
+the evaluation of the Upper Confidence Bound for Trees                           IV. THE MINIDUNGEONS 2 GAME
+equation, which applies UCB1 to the tree [26]. The tree is built
+incrementally, with each iteration following a simple formula:       MiniDungeons 2 is a deterministic, turn-based rogue-like
+                                                                  game, first described in [3], in which the player takes on the
+   1. Selection: MCTS chooses the next node to expand via the     role of a hero traversing a dungeon level, with the end goal of
+tree policy, starting at the root node and recursively picking    reaching the exit. The game stage is set on a 10 by 20 tile grid.
+the highest scoring child "until the most urgent expandable       Each tile is either an impassible wall or a passable floor. Floor
+node is reached" [26] or a terminal state (i.e. the game is won   tiles may contain objects that the hero can interact with, game
+or lost). The score for traversing the tree in MCTS is termed     characters such as the hero or non-player characters (NPCs), or
+tree policy, and in traditional MCTS approaches it is given by    nothing at all. Gameplay objects come in several varieties such
+the Upper Confidence Bound (UCB1) equation:                       as treasures, potions, portals, traps, and the exit of the level.
+                                                                  To win, the player must reach the exit. All game characters
+U CB = wi + c· ln(t)  (1)                                         have Hit Points (HP) and may deal damage. The player starts
+ni  ni                                                            with 10 HP; the player loses when they run out of HP and die.
+                                                                  Movement within the game is fairly simple. The player gets
+where wi is the number of wins which originate from taking        the first move every turn, and all NPCs move after. The NPCs
+move i, ni is the times move i was visited, c is the exploration  move in turn according to their original position on the map,
+constant. It is typically chosen that c = 2, since this value     starting from the top left corner and moving row-wise left-
+has been shown to guarantee convergence to a value function       to-right until the bottom right corner is reached. This initial
+within finite time for single-player games terminal states and    move sequence is retained even if NPCs later move to other
+rewards bounded to the range [0, 1] [26]. t is the total number   locations. On their turn, a game character may move in one
+of simulations for the node considered and is equivalent to       of the four cardinal directions (North, South, East, West) so
+the sum of all ni for all possible moves. The UCB1 equation       long as the tile in that direction is not a wall. The player is
+attempts to balance exploration (looking into paths not yet       given one re-usable javelin at the start of every level. The
+simulated) and exploitation (looking into paths previously        player may choose to throw this javelin and do 1 damage to
+simulated that show good results).                                any monster within their unbroken line of sight. After using
+                                                                  the javelin, the hero must traverse to the tile to which it was
+   2. Expansion: unless the selected node is a terminal state     thrown in order to pick it up and use it again. A map contains
+(i.e. the game is over), a child node (W ) is created for the     many different objects the player can collide with. Different
+next action. Typically, this next action is randomly selected     objects have different effects:
+from all possible future actions.
+                                                                     · Potions are used to increase the HP of the hero by 1, up
+   3. Simulation: the default policy is used to simulate a              to the maximum of 10. When collided with by either the
+random rollout from W . The rollout consists of performing              hero or blobs, they are consumed and may not be re-used.
+actions at random until the game reaches a terminal state, or
+up to a fixed number of moves.                                       · Treasures are used to increase the treasure score of the
+                                                                        hero. When collided with by either the hero or ogres, they
+   4. Backpropagation: the result (i.e. utility score) of the           are consumed and may not be re-used.
+simulation is backpropagated to every node, from the expanded
+W to the root node. This affects future policy decisions, i.e.       · Portals come in pairs. If the hero collides with a portal,
+future selection steps.                                                 they are immediately (on the same turn) transported to
+                                                                        the other paired portal.
+   These four steps are applied sequentially until the compu-
+tational resources allocated for the agent's move are depleted.      · Traps deal 1 damage to any game character moving
+The agent then chooses the next move (i.e. the child of the             through them, every time.
+root node) with the highest utility score.
+                                                                  While exploring a map, the hero may come across a variety
+B. Evolutionary Tree Policy                                       of monsters, some of which have secondary goals in addition
+                                                                  to attacking the player.
+   As discussed in Section III-A, selection in MCTS must
+balance between exploitation and exploration; UCB1 is tradi-         · Goblins (or Melee Goblins) move 1 tile every turn
+tionally used to maintain this balance. Changes to the UCB1             towards the player if they have an unbroken line of sight
+formula of eq. 1 are typically done in order to optimize                to the player. They have 1 HP and deal 1 damage upon
+it for a certain kind of game or to weigh certain kinds of              collision. Goblins avoid colliding with other goblins and
+game-play differently [25]. Cazenave's work [27] on evolving            goblin wizards.
+UCB1 alternatives for Go MCTS agents demonstrated that
+                                                                                                                                 4
+
+   · Goblin Wizards (or Ranged Goblins) cast a spell at the         TABLE I: Gameplay metrics used as variables combined in
+      hero if they have an unbroken line of sight within 5 tiles    the evolving equation trees, and their notation.
+      of the player that does 1 damage. If they are over 5 tiles
+      from the player but have line of sight, they will move 1      Steps Taken (ST)          Proximity to Exit (PE)
+      tile towards the player. Wizards have 1 HP and deal no        Potions Drunk (PD)        Treasures Opened (TO)
+      damage on collision.                                          Minitaur Knockouts (MTK)  Monsters Slain (MS)
+                                                                    Javelins Thrown (JT)      Health Left (HL)
+   · Blobs do not move unless they have unbroken line of            Teleports Used (TU)       Traps Spring (TS)
+      sight with either a potion or the hero. If they see either    Average MCTS reward (R¯)  Interactive Objects Consumed (IC)
+      one, they will move 1 tile towards the closest one per turn,
+      preferring potions over the hero in case of a tie. A blob     or it reaches timeout, wherein it will take the best sequence of
+      colliding with a potion consumes it. Blobs colliding with     actions it discovered. On average, trees will contain between
+      other blobs merge into a more powerful blob. The lowest       two and five million nodes.
+      level blob has 1 HP and does 1 damage upon collision.
+      The 2nd level blob has 2 HP and does 2 damage. The            A. Utility Formation
+      most powerful blob has 3 HP and does 3 damage.
+                                                                       The four personas of MiniDungeons 2 are defined by their
+   · Ogres also do not move unless they have unbroken line          primary and secondary objectives, which calculate a move's
+      of sight with either a treasure or the hero. If they see      utility score at the end of a simulation phase and is back-
+      either one, they will move 1 tile towards the closest per     propagated to the rest of the tree in the next phase (see
+      turn, preferring treasures over the hero in case of a tie.    Section III-A). From preliminary experiments, it seems that
+      When an ogre collides with a treasure, they consume it,       MiniDungeons 2 maps are frequently too complex and long
+      and their sprite becomes fancier to look at. Ogres have       for MCTS to simulate rollouts to a terminal state, as games
+      2 HP and deal 2 damage to anything they collide with,         can become infinite if the hero moves back and forth in place.
+      including other ogres.                                        Therefore, in the rollout stage, our agents simulate 10 random
+                                                                    moves before back-propagating the utility score. The different
+   · Minitaurs always move 1 step along the shortest path to        personas use metrics collected from the game's state after 10
+      the hero as determined by A* search, regardless of line of    random moves: Table 1 describes the variable metrics used in
+      sight. Collision with the minitaur will deal 1 damage. A      this paper. Note that for P D, M S, T O, and IC the values
+      minitaur has no HP and is incapable of dying. If damage       represent the ratio out of all potions, monsters, treasures, and
+      is done to it, the minitaur will be knocked out for 3 rounds  all non-monster game objects in the map, respectively.
+      (and can be passed through).
+                                                                       Runner (R) has the primary objective of finding the exit in
+The game is technically infinite with all current maps as           the fewest moves possible.
+they all contain areas where the player might move back and
+forth, continuously dealing with the Minitaur using the Javelin.    P E - 0.01 · ST           if hero is alive
+However, in practice most maps are finished in 20-30 moves          UR = P E - 0.01 · ST - 5 if hero is dead (2)
+with goal directed play. The branching factor is estimated to
+3.41 across the included maps [3], but depends on the map.             Monster Killer (MK) has the primary objective of killing
+                                                                    as many monsters as possible with the secondary objective of
+     V. PROCEDURAL PERSONAS IN MINIDUNGEONS 2                       finding the exit.
+
+   We identified four player archetypes which will become           0.7 · M S + 0.3 · P E     if hero is alive
+our procedural personas. These personas prioritize different        UMK = 0.7 · M S + 0.3 · P E - 5 if hero is dead (3)
+interactions with the game and were defined from the four
+primary objects in the game. The following four archetypes             Treasure Collector (TC) has the primary objective of
+were defined based on our design experience and intuition:          consuming as much treasure as possible with the secondary
+                                                                    objective of finding the exit.
+   · Runner aims to reach the exit.
+   · Monster Killer wants to kill monsters.                         0.7 · T O + 0.3 · P E     if hero is alive
+   · Treasure Collector desires to collect treasure.                UT C = 0.7 · T O + 0.3 · P E - 5 if hero is dead (4)
+   · Completionist attempts to consume any game object that
+                                                                       Completionist (C) has the primary objective of consuming
+      can be collected or killed (monsters, potions, treasures).    as many potions and treasures, and killing as many monsters as
+                                                                    possible (thus "completing" a map), along with the secondary
+Apart from the Completionist, these personas have been also         objective of reaching the exit.
+featured in previous attempts at modeling personas via MCTS
+[3] or in the simpler MiniDungeons game [6], [7]. Since             0.7 · IC + 0.3 · P E      if hero is alive
+the types of interactions with the game world are limited,          UC = 0.7 · IC + 0.3 · P E - 5 if hero is dead (5)
+these four single-minded personas capture a large part of the
+potential play space in MiniDungeons 2.                             By studying how these personas traverse the game's maps, we
+                                                                    can better evaluate how players will interact with the game.
+   The personas all use MCTS to formulate a sequence of ac-
+tions for play. Because MiniDungeons 2 is fully deterministic,
+each persona only builds one tree per map. It will immediately
+cease construction once a winning terminal state is discovered
+                                                                   5
+
+B. Evolving the Policy of Personas                                                          VI. EXPERIMENTS
+
+   Genetic programming is used to evolve the mathematical             The purpose of evolving UCB1 replacement functions is to
+formula that replaces UCB1. The Evolute C# source code1 was        optimize the agents' behavior relative to the persona-defining
+modified to work as follows: The chromosome representation         utility function. Below, we describe the results of evolving the
+is a syntax tree where all nodes contain a binary operation        agents, comparing them with the standard UCB1 function and
+and all leaves contain a variable or a constant. The four          using the evolved agents to playtest maps.
+binary functions are addition, subtraction, multiplication, and
+division. Constant values are uniformly, randomly generated        A. Experimental Protocol
+floats within [-1, 1]. Variable values are derived from the
+game-play metrics described in Table I. The generator takes           For the purposes of evolving the four agents' tree policy
+these variables and constant numbers and initializes equation      equations, six maps are played by the agent and the fitness
+trees with them, with an initial minimum depth of 2 and            score is calculated as described in Section V-B. However, for
+maximum of 5. During evolution, the maximum depth of a             evaluating the agents' performance a broader set of maps is
+tree is set to 8 to avoid extremely long equations. This means     used: all 11 maps of Fig. 2 are tested in Sections VI-C and
+that a equation can have as many as 28 (i.e. 256) elements.        VI-D. To cater for the stochastic nature of MCTS, each map is
+                                                                   simulated in 50 trials by each agent. To cater for the stochastic
+   Each persona has its own utility function, as per Eqs. (2­      nature of evolutionary algorithms, 3 independent evolutionary
+5), which evaluates the result to be back-propagated after the     runs of 100 generations are performed with a population of
+simulation step of MCTS. To test the candidate function, the       100 individuals, following the process described in V-B. The
+UCB equation is completely replaced by the candidate as            best performing run (based on the persona's core priority, e.g.
+the tree policy. The agents are evaluated based on a fitness       monsters killed for the Monster Killer) is chosen among the
+function calculated at the end of each playthrough, i.e. when      three evolutionary runs and reported here.
+the hero has reached the exit, when the hero is killed, or after
+a maximum allocated time has passed. Each persona uses the            For the purposes of assessing the performance of evolved
+same fitness as the utility score (e.g. fMK = UMK ) calculated     personas, baseline MCTS agents using the UCB1 tree policy
+at the end of the playthrough. E.g. for the Monster Killer the     of Eq. 1 are used to simulate the 11 maps in 50 trials each.
+fitness fMK evaluates how many monsters it killed in total in      Each baseline persona uses UCB1 for its tree policy but then
+this map, how close it ended to the exit (P E = 0 if the exit      backpropagates the persona-specific utility of Eqs. (2-5) after
+was reached), and whether the playthrough ended because the        each simulation. All reported significance testing is performed
+hero was killed (which applies a penalty to the fitness).          through Student's two-tailed t-tests, assuming unequal vari-
+                                                                   ance, with an error of 5%; when comparing between maps, the
+   Since MiniDungeons 2 maps can combine interactive tiles         50 playthroughs of each persona are tested for significance.
+and monsters in many different ways, the fitness of each           Otherwise, 95% confidence intervals are calculated via the
+individual is based on their utility in different maps. Evolving   standard deviation of all playthroughs in all maps.
+agents are tested on maps 1, 2, 3, 4, 7, and 10 of Fig. 2: these
+maps capture many different playstyle patterns of MiniDun-         B. Persona Evolution
+geons 2. The overall fitness of a chromosome is calculated by
+averaging its fitness across all playthroughs in these six maps.      For all personas, fitness starts converging after approx-
+This averaged fitness score was then used to select genes (i.e.    imately 20 generations and from then on improves only
+UCB1 replacement functions) for recombination, mutation and        marginally. The best evolved tree policy equation for each
+replacement.                                                       persona in its raw form often has duplicate variables and can
+                                                                   be simplified. We simplified each of the fittest equations at
+   The initial population of 100 individuals is created via        the end of 100 generations and list them as eq. (6­9). Some
+the initialization process described above. Evolution uses an      of these equations are quite convoluted but some interesting
+islands model [29] with 5 islands. Migration occurs in every       patterns can be gleaned. The tree policy for the Runner in
+generation. After migration, the five fittest individuals of each  eq. (6) strongly prioritizes the proximity to the exit variable
+island are selected and placed into that island's mating pool.     but also has a negative factor for health left (i.e. it actively
+Based on preliminary experiments, elitism was set to 15%           prefers reaching the exit with low health). The tree policy for
+of the population. Before crossover, all individuals in the        the Monster Killer in eq. (7) aggressively prioritizes monsters
+mating pool have a 10% chance of mutating. Mutation replaces       slain and proximity to the exit as these variables are multiplied
+the chromosome with a random chromosome via the same               to any other metric; interestingly this tree policy is the only
+initialization process described above. After mutation, the        one among eq. (6­9) which does not include R (the average
+mating pool undergoes crossover: two random chromosomes            reward). The tree policy for the Treasure Collector in eq. (8) is
+from the mating pool are crossed-over to create two offspring,     the only linear equation (a weighted sum) which includes an
+formed by exchanging randomly selected sub-trees between           added 0.19 constant which obviously does not affect the tree
+the parents. During crossover, every individual in the mating      policy as it is added to all possible moves. More interestingly,
+pool has an equal chance to be selected, regardless of fitness.    the Treasure Collector policy puts more weight on potions
+After this process is repeated for every island, a new popula-     drunk and monsters slain (2 for each) rather than on treasures
+tion is generated and evaluated for fitness.                       opened (weight of 1). The Completionist has the most complex
+
+   1http://evolute-csharp.sourceforge.net
+                                                                                               6
+
+(a) Map 1  (b) Map 2  (c) Map 3  (d) Map 4 (e) Map 5 (f) Map 6 (g) Map 7 (h) Map 8  (i) Map 9  (j) Map 10 (k) Map 11
+
+                                   Fig. 2: All 11 maps in the MiniDungeons 2 game.
+
+TABLE II: Average scores in several game metrics for evolved        treasures) on average in the 11 testbed maps of MiniDungeons
+and baseline personas. Results are averaged from 50 indepen-        2. At a high level, the Monster Killer kills more monsters on
+dent playthroughs of the best personas in each of the 11 maps.      average than the other personas, while the Treasure Collector
+Results include the 95% confidence interval.                        collects more treasure and drinks more potions. A more
+                                                                    detailed analysis in Section VI-C3 will shed more light on the
+Metric                R          MK       TC       C                differences between personas, as there are substantial devia-
+Evolved                                                             tions between maps. Table II includes the win rate of different
+Monsters              46%±2%     67%±2%   59%±2%    66%±3%          personas (i.e. instances where the agent reached the exit), as
+Potions                 8%±1%     4%±1%   25%±2%      8%±1%         well as computation time to find a path (up to a maximum
+Treasures                         7%±1%   35%±2%                    of 300 seconds). The evolved Runner persona is consistently
+Interactive Objects   10%±1%              41%±1%    10%±1%          able to reach the exit in all maps, and does so in far fewer
+Win Rate              25%±1%     33%±1%   54%±4%    34%±1%          steps and requiring far less computational time than all other
+Time (sec)           100%±0%     73%±4%    151±12  100%±0%          personas, both evolved and baseline MCTS. Surprisingly, the
+Baseline                                                            evolved Completionist persona also completes all maps in
+Monsters                3.2±0.3    83±11              8.1±1.2       all trials, despite the fact that it prioritizes interacting with
+Potions                                                             as many game objects as possible; perhaps due to the latter
+Treasures            25%±1%      29%±1%   25%±1%   28%±0%           strategy its computational time is double that of the evolved
+Interactive Objects   5%±1%       5%±1%    6%±1%    5%±0%           Runner. Since the Treasure Collector does not receive a large
+Win Rate              5%±1%       5%±1%             6%±0%           reward for finishing the level, it tends to roam around the
+Time (sec)                                17%±2%                    map attempting to collect all treasures, and does not finish
+                     13%±1%      16%±1%   19%±1%   15%±0%           before a maximum allocated time in 46% of all trials. The
+                     10%±3%      12%±3%            13%±0%           Monster Killer has a similarly low reward for finishing the
+                      277±6       285±4    9%±2%    278±0           level, however it only roams around certain maps until the
+                                           279±5                    allocated time runs out (27% of all trials). It should be noted
+                                                                    that the computation time is averaged from all playthroughs
+tree policy in eq. (9). It puts a surprising emphasis on steps      regardless of whether the agent reached the exit: if only won
+taken (multiplied to most components), monsters slain and           playthroughs are considered, the average computation time of
+proximity to exit (despite the fact that it also subtracts P E);    the evolved Monster Killer (2.06 sec) is the lowest of all
+most surprisingly, it only includes treasures opened (T O) once     other evolved personas, while that of the evolved Treasure
+and with a negative weight, meaning that it actively tries to       Collector remains high (at 23 sec). That said, considering only
+reduce the number of treasures opened despite the fact that         computation time of won games these values are still better
+the utility (and fitness) of eq. (5) actively rewards treasures as  than those of the baseline MCTS Runner (71 sec), Monster
+a member of the interactive objects set.                            Killer (167 sec) and Completionist (133 sec); only the baseline
+                                                                    Treasure Collector is relatively close (72 sec) to its evolved
+tR =6.235·ST ·P E2·(P E + 1) + R·(1 - HL) (6)                       counterpart but it only wins in one map (map 8). Comparisons
+                                                                    between baseline and evolved agents in the remaining game
+tMK =4·M S·P E·(M S + 2·HL·(P E - IC))                (7)           metrics of Table II will be detailed in Section VI-C2.
+
+tT C =2·P D + 2·M S + T O                                              2) Differences from the Baseline: For the purposes of com-
+                                                                    parisons between evolved and baseline personas, the results of
+           + 3·R + ST + P E + 0.19                    (8)           Table II are too noisy due to the sensitivity of persona behavior
+                                                                    in different maps of MiniDungeons 2. For a more thorough
+tC =ST ·M S·(ST 2·M S + IC) + R - T O + IC                          comparison, Table III compares the number of maps (out of
+                                                                    11) in which the different metrics are significantly higher for
+           - P E + 2·ST ·P E·(ST ·M S· + 1)           (9)           the evolved persona than the baseline persona of the same type
+                                                                    (E), or significantly lower (B). Significance is tested via two-
+C. Comparing Personas                                               tailed Student's t-tests (p < 5%) comparing 50 playthroughs
+
+   It is not sufficient to assess the evolved personas based
+on their fitness scores alone. This section tests the final best
+personas based on what types of content they interact with
+in all the maps of MiniDungeons 2. The focus is on com-
+parisons with UCB1 MCTS personas (as baselines) regarding
+agents' efficiency in achieving their core priorities, but also
+on comparisons between different personas' play behavior.
+
+   1) Overall Performance: Table II shows the ratio of game
+objects each agent has interacted with (i.e. monsters, potions,
+                                                                                                                    7
+
+TABLE III: Maps in which the shown metrics are significantly TABLE IV: Maps in which the shown metrics are significantly
+higher for the evolved persona (E) than the baseline persona higher for the persona on the row than in the persona in the
+of the same type, and maps in which the reverse is true (B). column.
+
+                              R    MK    TC     C                                    Evolved              Baseline
+                           EB    EB    EB    EB                                                   R MK TC C
+Metric                     81    10 0  10 1  10 0                          R MK TC C
+Monster Ratio              20    21    81    20
+Potion Ratio               32    25    71    33                      Monster Ratio
+Treasure Ratio             91    10 0  10 1  10 0
+Interactive Objects Ratio  0 11  0 11  0 10  0 11                    R --0 31                  R --0 10
+Time (sec)                 10 0  70    70    10 0
+Win Rate                                                             MK 8 -- 6 3               MK 5 -- 5 2
+
+                                                                     TC 7 3 -- 3               TC 2 1 -- 1
+
+                                                                     C     8 2 6--             C  3 0 2--
+
+                                                                     Potion Ratio
+
+                                                                     R --2 10                  R --0 10
+
+                                                                     MK 1 -- 0 1               MK 0 -- 1 0
+
+of each map per persona (evolved or baseline).                       TC 8 8 -- 8               TC 3 3 -- 3
+   Table III shows that evolved personas score significantly
+                                                                     C     0 2 1--             C  0 0 1--
+higher (or lower, for computation time) in the different metrics
+in more maps than their baseline counterparts. A notable ex-         Treasure Ratio
+ception is the treasure ratio for the Runner, Monster Killer, and
+Completionist, as the MCTS personas collect more treasure in         R --3 00                  R --1 01
+a comparable number of maps; however, these baseline MCTS
+agents do not complete the level in far more cases. Especially       MK 0 -- 0 0               MK 2 -- 0 0
+regarding win rates, the evolved personas are always superior
+(or at least not inferior) in all maps and for all personas. In      TC 9 9 -- 8               TC 6 7 -- 6
+comparison, baseline personas need more computational time
+and do not finish a level far more often as shown by their win       C     2 3 0--             C  1 0 0--
+rates in Table II (less than 15% for all personas).
+                                                                     Interactive Object Ratio
+   3) Differences among Personas: Due to the large differ-
+ences between MiniDungeons 2 maps in the different metrics           R --3 11                  R --0 00
+of Table II, to compare whether (and how) the procedural
+personas play the game differently we evaluate the number            MK 6 -- 1 2               MK 4 -- 0 1
+of maps in which one persona has a significantly higher
+value for one metric than another persona. This comparison is        TC 9 8 -- 8               TC 6 5 -- 6
+summarized in Table IV; significant differences are established
+from a t-test (p < 5%) between 50 playthroughs of each               C     8 4 1--             C  2 0 0--
+persona in one map. We are interested in seeing whether the
+evolved personas, which have been shown to be more efficient         Time
+and robust at gameplaying, still maintain differentiation in
+those game metrics that make them unique (e.g. a Monster             R --2 01                  R --0 02
+Killer persona should kill more monsters than other personas).
+                                                                     MK 3 -- 1 3               MK 1 -- 1 3
+   Analyzing the general differences between the evolved
+Monster Killer and other evolved personas in Table IV, we see        TC 11 10 -- 10            TC 2 1 -- 2
+that its killed monsters ratio is higher for this persona; no other
+persona has a higher ratio in any map. The evolved Treasure          C     6 4 0--             C  1 0 1--
+Collector collects significantly more treasure in most maps (8
+or 9 out of 11); the baseline Treasure Collector is close but is     Win Rate
+not superior from other baseline personas in as many maps.
+Interestingly, the evolved Completionist is underperforming          R --3 70                  R --0 10
+in all relevant metrics compared to the Treasure Collector: it
+interacts with more game objects only in 1 map (the Treasure         MK 0 -- 4 0               MK 1 -- 1 0
+Collector has more interactive objects in 8 maps) and generally
+drinks fewer potions and collects less treasure.                     TC 0 1 -- 0               TC 0 0 -- 0
+
+   It is therefore obvious from Table IV that the Completionist      C     0 3 7--             C  1 1 1--
+is inferior to the Treasure Collector apart from the fact that
+it kills more monsters in two maps. This is surprising due to        than the Runner. Even the baseline Completionist persona has
+the fact that this persona explicitly rewarded a high interactive    a high win rate compared to the baseline Runner (see Table II
+objects ratio in the fitness for deciding its tree policy, and when  while other baseline personas interact with more objects. It is
+scoring the default policy. On the other hand, the evolved           our assumption that using the interactive objects ratio for the
+Completionist persona is the only persona apart from the             utility score (and one would assume as a fitness) creates an
+Runner which wins all 50 playthroughs in all 11 maps while           imbalance between interacting with an object and approaching
+still interacting with more game objects (primarily monsters)        the exit. For instance, most maps have 5 to 8 treasure tiles and
+                                                                     thus a Treasure Collector would have a higher utility gain by
+                                                                     collecting a couple during a playthrough rather than by getting
+                                                                     a few steps closer to the exit; instead, when maps have around
+                                                                     20 interactive objects then a completionist interacting with a
+                                                                     couple of them will have a lower utility gain than approaching
+                                                                     the exit. Completionist agents thus favor reaching the exit,
+                                                                     although not as aggressively as the the Runner as there is
+                                                                     some reward (however slight) for deviating from the path.
+
+                                                                     D. Evaluating Levels with Personas
+
+                                                                        Procedural personas can be used for many different pur-
+                                                                     poses, such as modeling players based on the similarity of
+                                                                     players' actions with a persona's action [8]. However, personas
+                                                                     can also be used to evaluate game levels by creating artificial
+                                                                     playtraces; this can be used as feedback to a human designer
+                                                                     when procedural personas test an authored level, but also as
+                                                                     a way to improve computer generated levels in a search-
+                                                                     based approach driven by the artificial playtraces of personas
+                                                                     in similuations [9]. In this paper, the former approach is
+                                                                     followed and we evaluate which patterns of game levels affect
+                                                                                                                                                                   8
+
+                             treasures goblins minitaurs ogres                               Monster Ratio                          Monster Ratio
+                         30 potions  wizards blobs
+Number of Interactables
+                         25                                                  Potion Ratio        Win Rate Potion Ratio                                Win 1R.0ate
+                                                                                                   1.0                                             0.5
+                         20                                                                  0.5
+
+                         15
+
+                         10                                                  Treasure Ratio                    Time Treasure Ratio                 Time
+
+                         5
+
+                         0 1 2 3 4 5 6 7 8 9 10 11                                         Interactable Ratio           Interactable Ratio
+                                                                                           (a) Map 6                    (b) Map 8
+                                                  Map
+
+                         Fig. 3: Number of interactive objects in MD2 maps.
+
+                                                                             Fig. 4: Metrics of different personas in the same map.
+
+the performance of different personas. We will only use the                  areas (r = 0.63); open areas are tiles where all adjacent tiles
+evolved personas, as they are overall superior.                              are non-walls, thus it is not surprising that walls and open areas
+                                                                             have opposite effects. It seems that the Treasure Collector is
+   In order to first identify what the differences are between               less able to handle winding corridors. The win ratio of the
+levels, Fig. 3 shows the number of interactive objects (i.e. po-             Treasure Collector persona has a significant negative correla-
+tions, treasure, and the different types of monsters) contained              tion with the shortest path length to the exit (r = -0.62), again
+in each map used in this analysis. Obviously, some maps have                 pointing at this persona's poor performance in winding maze-
+fewer interactive objects (map 1, map 9), and some maps have                 like corridors. While no significant correlations were found for
+more potions and few treasures (e.g. map 5) or vice versa                    the Monster Killer, the Completionist's interactive object ratio
+(e.g. map 9). There are also many differences in the types of                is negatively correlated with the number of treasures in the
+monsters favored; while all maps include at least one minitaur               map (r = -0.65). This is not surprising as the Completionist's
+(map 2 has two of them), some maps do not include ogres                      evolved tree policy in eq. (9) actively discourages opening
+(map 1, map 9) and some maps have more ranged goblin                         treasure chests, so the more of those there are in the map the
+enemies than melee goblin enemies (e.g. map 4, map 10)                       fewer the Completionist's interactions with game objects.
+or vice versa (e.g. map 1). It should be noted that besides
+interactive objects, these maps differ in terms of other types of               In order to see how the maps' layout can affect the diversity
+tiles, e.g. seven maps contain a set of portals allowing shortcuts           of playthroughs among personas, we choose two indicative
+through the level, while six maps contain one or more traps                  maps to analyze; map 6 which has the most (significant)
+which deal damage when the tile is visited.                                  differences in all possible pairs of personas and for all metrics
+                                                                             of Table IV, and map 8 which has the fewest differences. The
+   A broad range of metrics on the levels' structure alone                   values of these metrics for different personas in each map are
+(before simulation) were collected from the 11 maps of                       shown in Fig. 4, averaged from 50 playthroughs.
+MiniDungeons 2. These include the number of interactive
+objects of Fig. 3, the number of portals and traps, the number                  In map 6, the Runner and Completionist reach the exit in all
+of wall tiles, choke points and dead ends (tiles with only                   playthroughs while the Monster Killer and Treasure Collector
+two or one connected passable tiles, respectively), length of                never reach the exit as their computation time consistently
+the shortest path between entrance and exit and many others.                 reaches the timeout limit of 300 sec. Surprisingly, the Treasure
+The metrics of all maps were then analyzed in terms of their                 Collector kills more monsters (66%), collects more treasure
+correlations with the performance of each persona in the same                (38%), drinks more potions (36%) and generally interacts with
+map. For the sake of brevity, only correlations with each                    more game objects (49%) than all other personas. The Runner
+persona's win rate and core priority will be discussed: i.e. for             persona manages to collect more treasure (15%) than both
+the Runner computation time is the core priority, treasure ratio             the Monster Killer (0%) and the Completionist (14%). The
+for Treasure Collector, monster ratio for Monster Killer and                 Completionist has the second highest interactive object ratio
+interactive object ratio for Completionist. While many of the                (32%). Based on the heatmaps of Fig. 5, the Monster Killer
+level metrics were found to be correlated with these persona                 and Treasure Collector are shown to roam around the map
+metrics, due the small sample size (11 maps) only a handful of               and then get blocked from taking a decision until the 300
+significant correlations were found (p < 0.05 of the Pearson's               sec timeout. The Runner and Completionist on the other hand
+correlation coefficient, which is also reported as r) .                      follow a similar path to the exit (top right) which is actually
+                                                                             the shortest path. Only the Treasure Collector gets the two
+   For the Runner, computation time was significantly corre-                 unguarded treasures next to the entrance (bottom left), while
+lated with the length of the shortest path between entrance                  the wounded Monster Killer (due to combat with the ogre and
+and exit (r = 0.71). This is not surprising, since the Runner is             two blobs) ignores both unguarded potions along its path in
+efficient at finding a short route to the exit and thus requires             Fig. 5b. Interestingly, no persona uses the portal.
+less computation time if the exit is nearby. For the Treasure
+Collector, the ratio of collected treasures has a significant                   In map 8, all personas reach the exit in all playthroughs
+negative correlation with the number of walls (r = -0.69)
+and a significant positive correlation with the number of open
+                                                                                   9
+
+                                                                  map 8 is deemed the best for the Runner, and map 1 the worst.
+                                                                  For the Treasure Collector map 5 is the best and map 10 is the
+                                                                  worst. It is telling that often the worst map for one persona is
+                                                                  the best for another, pointing to the fact that different priorities
+                                                                  combined with different behaviors to achieve those priorities
+                                                                  can saturate how each persona assesses the maps.
+
+                                                                  VII. DISCUSSION
+
+(a) R  (b) MK  (c) TC  (d) C                                         The experiments of Section VI demonstrated that the
+                                                                  evolved personas were able to play the game more efficiently
+Fig. 5: Heatmaps of persona behavior in map 6.                    --requiring less computational time-- than the baseline UCB1
+                                                                  agents, and were more robust in completing each map by
+(a) R  (b) MK  (c) TC  (d) C                                      reaching the exit. Despite being efficient in completing most
+                                                                  levels (or all levels in the case of the Runner and Completion-
+Fig. 6: Heatmaps of persona behavior in map 8.                    ist), the evolved personas still differentiate their playstyle and
+                                                                  in most maps perform better than other personas with regard
+with minimal computational time, and generally their other        to their core priority. The exception is the Completionist,
+metrics are also similar. Again the monsters killed across 50     which seems to be an inferior form of the Treasure Collector;
+playthroughs are lower for the Monster Killer (11%), than         however this persona has an important benefit in that it
+for the Treasure Collector (19%) and slightly lower than the      completes all the levels consistently while performing more
+Completionist (12%). All personas drink no potions and collect    interactions than the Runner. Looking at the effect that each
+one treasure (which is mandatory in order to reach the exit       map of MiniDungeons 2 had on each persona, we identify
+as shown in Fig. 6); therefore the difference in interactive      that different personas are sensitive to different level patterns.
+object ratio is solely due to more monsters killed by the         Such findings could influence the level design or game design
+Treasure Collector. It is worth noting that Fig. 6c shows         of MiniDungeons 2 (i.e. creating more open areas and fewer
+how the Treasure Collector may spend more time roaming            winding corridors), or lead to a re-design of the fitness or
+around the map. On average, the Treasure Collector needs          utility functions e.g. as we find that treasures are not favored
+more computation time (2.8 sec) than the Monster Killer and       by Completionists. Finally, in most cases results differ in terms
+Runner (0.8 sec for both). Indeed, the Treasure Collector takes   of which map from the set is best or worst for each persona
+on average 11.6 actions (the Runner takes 8, the Monster Killer   according to their priorities and playstyles.
+9 and the Completionist 9.2). This persona's behavior differs
+from playthrough to playthrough: in the one shown in Fig. 6c,        Since procedural personas are intended to be a design tool,
+the Treasure Collector took 23 actions and killed 5 monsters,     they are inherently subjective in the sense that the utility
+which simply walked towards the agent (without the agent          functions should be constructed by a game or level designer
+needing to explore the map).                                      interested in testing their content for the game. The experi-
+                                                                  ments provided here support the persona concept as useful for
+   Finally, it would be interesting to see if there are maps      fulfilling specific core priorities for a game of the scope and
+which are "preferred" by all personas. Using the priorities       size of MiniDungeons 2. How the method scales to games
+mentioned above (lowest computation time for Runner, highest      of higher complexity is an open question; any game could in
+treasure ratio for Treasure Collector, highest monster ratio for  principle be tested using procedural personas, as long as it
+Monster Killer and highest interactive object ratio for Com-      includes agent control methods that can be optimized towards
+pletionist), we find that the best map for the Monster Killer is  a particular utility function. The specification of the utility
+map 9, in which it kills all monsters in all playthroughs, and    function is a complex issue for the procedural persona method:
+the worst is map 8. Map 8 is also deemed the worst by the         the concept is useful from a design perspective only to the
+Completionist, while map 1 is deemed the best. In contrast,       extent that game designers are capable of defining appropriate
+                                                                  utility sources and ways of weighting them. One approach
+                                                                  to solving this problem could be learning utility functions
+                                                                  from demonstration: e.g. from groups of observed players or
+                                                                  from designers playing in different styles to demonstrate what
+                                                                  particular personas should play like. This could be enabled
+                                                                  via methods such as inverse reinforcement learning, driven by
+                                                                  evolution or other methods. Regardless, the proposed method
+                                                                  is supported in general by the fact that the personas exhibit
+                                                                  significantly different behaviors in the same environments,
+                                                                  driven by simple utility functions; it is thus likely that game
+                                                                  creators would be able to use the personas to inform their
+                                                                  content creation process. It also suggests that personas could
+                                                                  successfully be integrated as critics in a procedural level gen-
+                                                                               10
+
+eration system; this was previously done for MiniDungeons,                      [7] ----, "Evolving personas for player decision modeling," in Proceedings
+a simpler game with simpler persona implementations [9].                             of the IEEE Conference on Computational Intelligence and Games,
+                                                                                     2014.
+   Another direction for future work is to validate a posteriori
+the ability of the defined personas and their behavior to map to                [8] ----, "Evolving models of player decision making: Personas versus
+real human playtraces. This could allow players to be mapped                         clones," Entertainment Computing, 2015.
+to one of the four personas based on the similarity of persona
+and player gameplay traces either on the action-by action-level                 [9] A. Liapis, C. Holmga°rd, G. N. Yannakakis, and J. Togelius, "Procedural
+or on a more macro-strategy level, as done in [8]. However,                          personas as critics for dungeon generation," in Applications of Evolu-
+the current experiments do not include human players as they                         tionary Computation. Springer, 2015, vol. 9028, LNCS.
+test how our method can allow game/level designers to define
+archetypal personas a priori, before even showing the game                     [10] T. Short. Maximizing the impact of procedural personalities. [Online].
+or level to players. The experiments have demonstrated that                          Available: http://www.gamasutra.com/blogs/TanyaShort/20170222/
+different behaviors can be encoded in such a way, and that the                       291312/Maximizing the Impact of Procedural Personalities.php
+persona's behaviors (in terms e.g. of monsters killed) largely
+match the designers' stated intentions.                                        [11] A. Cooper, "The inmates are running the asylum: Why high-tech
+                                                                                     products drive us crazy and how to restore the sanity (new ed.),"
+                         VIII. CONCLUSION                                            Indianapolis, Ind.: Sams, 2004.
+
+   This paper presented the general concept of procedural                      [12] A. Canossa and A. Drachen, "Patterns of Play: Play-Personas in User-
+personas, a framework for generative player modeling for auto-                       Centred Game Development," in Proceedings of the DiGRA Interna-
+matic playtesting. Procedural personas represent a potentially                       tional Conference, 2009.
+general framework for representing archetypal playstyles,
+based on decision theory, that could inform game designers                     [13] A. Tychsen and A. Canossa, "Defining Personas in Games Using
+about properties of their game content as it is being created.                       Metrics," in Proceedings of the 2008 Conference on Future Play:
+The experiments reported in this paper show that personas are                        Research, Play, Share. ACM, 2008, pp. 73­80.
+capable of showing different interaction patterns in response
+to game content and can help map out the playspace afforded                    [14] C. Holmga°rd, A. Liapis, J. Togelius, and G. N. Yannakakis, "Personas
+by game levels as those are being designed. By combining                             versus clones for player decision modeling," in Proceedings of the
+evolution and MCTS, we produce a set of personas that show                           International Conference on Entertainment Computing. Springer, 2014,
+what different play styles might look like in MiniDungeons 2.                        pp. 159­166.
+Evaluations can be run in a short amount of time, making
+it a feasible method in an iterative design process. Future                    [15] M. Nelson, "Game metrics without players: Strategies for understanding
+research will investigate how procedural personas can be used                        game artifacts," in Proceedings of the AIIDE Workshop on Artificial
+as interactive inspirational tools in the content creation process                   Intelligence in the Game Design Process, 2011, pp. 14­18.
+and as automated critics in procedural content generation.
+Future work should also focus on ways to scale the procedural                  [16] A. M. Smith, C. Lewis, K. Hullett, G. Smith, and A. Sullivan, "An
+persona framework to games of larger complexity and on ways                          Inclusive Taxonomy of Player Modeling," University of California,
+in which personas can learn from demonstration instead of                            Santa Cruz, Tech. Rep. UCSC-SOE-11-13, 2011.
+having their utility functions specified directly.
+                                                                               [17] G. N. Yannakakis, P. Spronck, D. Loiacono, and E. Andre´, "Player
+                        ACKNOWLEDGMENT                                               Modeling," in Artificial and Computational Intelligence in Games.
+                                                                                     Saarbru¨cken/Wadern: Dagstuhl Publishing, 2013, pp. 45­55.
+   We thank Abdallah Saffidine and Ahmed Khalifa for advice
+on tree search and evolving MCTS. Michael Green acknowl-                       [18] J. Ortega, N. Shaker, J. Togelius, and G. N. Yannakakis, "Imitating
+edges financial support from the GAANN Program.                                      human playing styles in super mario bros," Entertainment Computing,
+                                                                                     vol. 4, no. 2, pp. 93­104, 2013.
+                             REFERENCES
+                                                                               [19] J. Togelius, R. De Nardi, and S. M. Lucas, "Towards automatic person-
+ [1] T. Fullerton, C. Swain, and S. Hoffman, Game Design Workshop:                   alised content creation for racing games," in Proceedings of the IEEE
+      Designing, Prototyping, and Playtesting Games. Focal Press, 2004.              Conference on Computational Intelligence and Games, 2007.
+
+ [2] M. S. El-Nasr, A. Drachen, and A. Canossa, Game Analytics: Maximiz-       [20] B. Cowley and D. Charles, "Behavlets: a method for practical player
+      ing the Value of Player Data. Springer, 2013.                                  modelling using psychology-based player traits and domain specific
+                                                                                     features," UMUAI, vol. 26, no. 2-3, pp. 257­306, 2016.
+ [3] C. Holmga°rd, A. Liapis, J. Togelius, and G. N. Yannakakis, "MiniDun-
+      geons 2: An Experimental Game for Capturing and Modeling Player          [21] B. Tastan and G. R. Sukthankar, "Learning policies for first person
+      Decisions," in Proceedings of the Foundations of Digital Games Con-            shooter games using inverse reinforcement learning." in Proceedings
+      ference, 2015.                                                                 of the AAAI Artificial Intelligence for Interactive Digital Entertainment
+                                                                                     Conference. AAAI, 2011.
+ [4] R. Hunicke, M. LeBlanc, and R. Zubek, "MDA: A formal approach to
+      game design and game research," in Proceedings of the AAAI Workshop      [22] S. Devlin, A. Anspoka, N. Sephton, P. I. Cowling, and J. Rollason,
+      on Challenges in Game AI, vol. 4, no. 1, 2004.                                 "Combining gameplay data with monte carlo tree search to emulate
+                                                                                     human play," in Proceedings of the AAAI Artificial Intelligence for
+ [5] C. Holmga°rd, A. Liapis, J. Togelius, and G. N. Yannakakis, "Monte-             Interactive Digital Entertainment Conference, 2016.
+      carlo tree search for persona based player modeling," in Proceedings of
+      the AIIDE workshop on Player Modeling, 2015.                             [23] A. Zook, B. Harrison, and M. O. Riedl, "Monte-carlo tree search for
+                                                                                     simulation-based strategy analysis," in Proceedings of the Foundations
+ [6] ----, "Generative agents for player decision modeling in games," in             of Digital Games Conference, 2015.
+      Proceedings of the Foundations of Digital Games Conference, 2014.
+                                                                               [24] M. Nelson, "Investigating vanilla mcts scaling on the gvg-ai game
+                                                                                     corpus," in Proceedings of the IEEE Conference on Computational
+                                                                                     Intelligence and Games, 2016.
+
+                                                                               [25] A. Khalifa, A. Isaksen, J. Togelius, and A. Nealen, "Modifying mcts
+                                                                                     for human-like general video game playing," in Proceedings of IJCAI,
+                                                                                     2016.
+
+                                                                               [26] C. B. Browne, E. Powley, D. Whitehouse, S. M. Lucas, P. I. Cowling,
+                                                                                     P. Rohlfshagen, S. Tavener, D. Perez, S. Samothrakis, and S. Colton, "A
+                                                                                     survey of monte carlo tree search methods," IEEE Transactions on CI
+                                                                                     and AI in Games, vol. 4, no. 1, pp. 1­43, 2012.
+
+                                                                               [27] T. Cazenave, "Evolving Monte-Carlo Tree Search Algorithms," Univ.
+                                                                                     Paris 8, Dept. Inform., Tech. Rep., 2007.
+
+                                                                               [28] I. Bravi, A. Khalifa, C. Holmga°rd, and J. Togelius, "Evolving game-
+                                                                                     specific UCB alternatives for general video game playing," in Applica-
+                                                                                     tions of Evolutionary Computation. Springer, 2017.
+
+                                                                               [29] D. Whitley, S. Rana, and R. B. Heckendorn, "The island model genetic
+                                                                                     algorithm: On separability, population size and convergence," CIT.
+                                                                                     Journal of computing and information technology, vol. 7, no. 1, pp.
+                                                                                     33­47, 1999.
+

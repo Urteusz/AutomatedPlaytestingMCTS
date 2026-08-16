@@ -24,10 +24,10 @@ import time
 from collections.abc import Iterator, Mapping
 from typing import Any
 
-from ..domain.mcts import MonteCarloTreeSearch
-from ..domain.personas import PERSONA_NAMES
-from ..infrastructure.paths import MD2_BENCHMARK_DIR, PROJECT_ROOT
-from ..infrastructure.traces import trace_path_for, trace_record, write_trace
+from minidungeons.domain.mcts import MonteCarloTreeSearch
+from minidungeons.domain.personas import PERSONA_NAMES
+from minidungeons.infrastructure.paths import MD2_BENCHMARK_DIR, PROJECT_ROOT
+from minidungeons.infrastructure.traces import trace_path_for, trace_record, write_trace
 
 
 RESULTS_DIR = PROJECT_ROOT / "data" / "results"

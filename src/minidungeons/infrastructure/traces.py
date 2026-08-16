@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, IO, Iterable, Sequence
+from typing import Any, IO, Iterable, Mapping, Sequence
 
 Coord = tuple[int, int]
 
@@ -68,8 +68,14 @@ def load_traces(path: str | Path) -> list[dict[str, Any]]:
                 record = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"bledna linia {line_number} w {path}: {exc}") from exc
-            record["path"] = [(int(row), int(column)) for row, column in record["path"]]
-            unique[(record["persona"], record["map"], int(record["trial"]))] = record
+            # brakujacy klucz to nie egzotyka: proces ubity w trakcie zapisu
+            # zostawia ogon, ktory bywa poprawnym JSON-em bez czesci pol
+            try:
+                record["path"] = [(int(row), int(column)) for row, column in record["path"]]
+                key = (record["persona"], record["map"], int(record["trial"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"bledna linia {line_number} w {path}: {exc}") from exc
+            unique[key] = record
     return list(unique.values())
 
 
@@ -97,3 +103,35 @@ def cell_counts(paths: Iterable[Sequence[Coord]]) -> dict[Coord, int]:
         for cell in path:
             counts[cell] = counts.get(cell, 0) + 1
     return counts
+
+
+def mean_visits(paths: Sequence[Sequence[Coord]]) -> dict[Coord, float]:
+    """Kafel -> srednia liczba wizyt **na partie**.
+
+    Dzielimy przez liczbe sciezek, nie przez liczbe krokow, wiec wartosc czyta sie
+    jako "ile razy persona stanela na tym kaflu w przecietnej partii". Powtorne
+    wejscie w tej samej partii liczy sie osobno - inaczej heatmapa gubilaby
+    zawracanie, ktore jest cala roznica miedzy personami.
+    """
+
+    if not paths:
+        return {}
+    return {cell: total / len(paths) for cell, total in cell_counts(paths).items()}
+
+
+def average_visits(per_persona: Mapping[str, Sequence[Sequence[Coord]]]) -> dict[Coord, float]:
+    """Srednia srednich po personach: kazda persona wazy tyle samo.
+
+    Nie da sie tego zastapic `mean_visits` po zlaczonych sciezkach - persona
+    z dluzszymi partiami zdominowalaby wynik, a pytanie brzmi "gdzie chodza
+    persony", nie "gdzie chodzi wiekszosc krokow".
+    """
+
+    means = [mean_visits(paths) for paths in per_persona.values() if paths]
+    if not means:
+        return {}
+    averaged: dict[Coord, float] = {}
+    for single in means:
+        for cell, value in single.items():
+            averaged[cell] = averaged.get(cell, 0.0) + value
+    return {cell: value / len(means) for cell, value in averaged.items()}
