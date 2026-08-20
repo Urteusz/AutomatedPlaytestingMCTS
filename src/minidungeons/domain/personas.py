@@ -31,8 +31,13 @@ def _read_personas(path: str) -> dict[str, Any]:
         return json.load(handle)
 
 
+_DEFAULT_PERSONAS_KEY = str(DEFAULT_PERSONAS_PATH.resolve())
+
+
 def load_personas(path: str | Path | None = None) -> dict[str, Any]:
-    return _read_personas(str(Path(path or DEFAULT_PERSONAS_PATH).resolve()))
+    if not path:
+        return _read_personas(_DEFAULT_PERSONAS_KEY)
+    return _read_personas(str(Path(path).resolve()))
 
 
 def utility_from_metrics(

@@ -28,7 +28,7 @@ from minidungeons.domain.mcts import MonteCarloTreeSearch
 from minidungeons.domain.personas import PERSONA_NAMES
 from minidungeons.infrastructure.paths import MD2_BENCHMARK_DIR, PROJECT_ROOT
 from minidungeons.infrastructure.traces import trace_path_for, trace_record, write_trace
-
+from minidungeons.domain.selectionPolicy import UCB1Policy
 
 RESULTS_DIR = PROJECT_ROOT / "data" / "results"
 SEARCH_POLICY = "tree_terminal_only"
@@ -60,7 +60,7 @@ TABLE_METRICS = (
 
 
 def run_one(map_path: str, persona: str, trial: int, time_limit: float) -> dict:
-    agent = MonteCarloTreeSearch(map_path)
+    agent = MonteCarloTreeSearch(map_path, policy=UCB1Policy())
     start = time.perf_counter()
     metrics = agent.play_single_tree(persona, time_limit_s=time_limit, seed=trial)
     elapsed = time.perf_counter() - start

@@ -8,6 +8,7 @@ import random
 import time
 
 from .engine import Action, Coord, MiniDungeon
+from .selectionPolicy import SelectionPolicy
 
 from .personas import utility
 
@@ -33,37 +34,18 @@ class Node:
         self.children[chosen] = child
         return child
 
-    def best_child(self, c: float = math.sqrt(2)) -> "Node":
-        total_visits = sum(child.visits for child in self.children.values())
+    def best_child(self, policy: SelectionPolicy) -> "Node":
+        return policy.select(self)
 
-        best_node = None
-        best_score = float("-inf")
 
-        for child in self.children.values():
-            average_utility = child.total_utility / child.visits
-
-            exploration_bonus = c * math.sqrt(
-                math.log(total_visits) / child.visits
-            )
-
-            ucb_score = average_utility + exploration_bonus
-
-            if ucb_score > best_score:
-                best_score = ucb_score
-                best_node = child
-
-        if best_node is None:
-            raise ValueError("Nie można wybrać dziecka: węzeł nie ma dzieci")
-
-        return best_node
 
 class MonteCarloTreeSearch:
     """MCTS holds one game state and performs another action on it."""
 
-    def __init__(self, map_path: str | Path) -> None:
+    def __init__(self, map_path: str | Path, policy: SelectionPolicy) -> None:
         self.env = MiniDungeon(map_path)
         self.root = Node(self.env.clone(), None, None)
-        # slad faktycznie odegranej partii - akcje z rollout-ow tu nie trafiaja
+        self.policy = policy
         self.played: list[Action] = []
         self.path: list[Coord] = [self.env.hero_position]
         self.from_tree: bool | None = None
@@ -93,7 +75,7 @@ class MonteCarloTreeSearch:
             node = self.root
             # 1. selekcja: schodz po UCB1, poki wezel jest w pelni rozwiniety
             while not node.untried and node.children:
-                node = node.best_child()
+                node = node.best_child(self.policy)
             # 2. ekspansja: jesli jest co rozwijac i gra sie nie skonczyla
             if node.untried and not node.env.done:
                 node = node.expand(rng)
@@ -150,7 +132,7 @@ class MonteCarloTreeSearch:
             iterations += 1
             node = self.root
             while not node.untried and node.children:
-                node = node.best_child()
+                node = node.best_child(self.policy)
             if node.untried and not node.env.done:
                 node = node.expand(rng)
             self.backpropagate(node, self.rollout(node.env, persona, rng))
