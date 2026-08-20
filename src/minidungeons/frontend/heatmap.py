@@ -61,7 +61,8 @@ STAT_NAME_WIDTH = 150
 STAT_COLUMN_WIDTH = 74
 STAT_LINE_HEIGHT = 16
 
-HINT = "1-9, 0, - : mapa,  kursor nad kaflem: liczba wizyt,  Esc - koniec"
+HINT = ("1-9, 0, - : mapa,  strzalki <- -> : persona,  "
+        "kursor nad kaflem: liczba wizyt,  Esc - koniec")
 
 HEAT_STOPS = (
     (0.000, (250, 214, 210)),
@@ -373,6 +374,18 @@ class View:
             return True
         return False
 
+    def cycle_persona(self, step: int) -> None:
+        """Nastepna/poprzednia persona w kolejnosci z tabeli metryk.
+
+        Kolejnosc jest ta sama co PERSONA_ROWS, wiec podswietlony wiersz HUD
+        przesuwa sie zgodnie z tym, co pokazuje heatmapa."""
+
+        try:
+            index = PERSONA_ROWS.index(self.persona)
+        except ValueError:  # persona z CSV, ktorej nie ma w kolejnosci artykulu
+            index = len(PERSONA_ROWS) - 1
+        self.persona = PERSONA_ROWS[(index + step) % len(PERSONA_ROWS)]
+
 
 def main(argv: list[str] | None = None) -> None:
     """Punkt wejscia minidungeons-heatmap. Bez argumentow bierze pierwszy CSV
@@ -427,6 +440,10 @@ def run(view: View, *, fps: int = FPS) -> None:
                     running = False
                 elif event.key in MAP_KEYS:
                     view.select_map(MAP_KEYS[event.key])
+                elif event.key in {pygame.K_RIGHT, pygame.K_TAB}:
+                    view.cycle_persona(1)
+                elif event.key == pygame.K_LEFT:
+                    view.cycle_persona(-1)
 
         map_name = view.map_name
         if map_name not in environments:
