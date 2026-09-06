@@ -1,48 +1,72 @@
-"""Eksperyment baseline MCTS-UCB1 wedlug protokolu artykulu (Tabela II)."""
+"""Eksperyment MCTS wedlug protokolu artykulu (Tabela II).
+
+Ten modul odpowiada wylacznie za: argumenty, definicje pojedynczej proby
+(`run_one`), schemat wiersza wyniku i formatowanie Tabeli II. Wznawianie,
+pula procesow i obsluga Ctrl+C siedza w `infrastructure.experiment_runner`,
+bo dokladnie tego samego potrzebuje driver ewolucji GP.
+"""
 
 from __future__ import annotations
 
 import argparse
-import csv
-from concurrent.futures import (
-    FIRST_COMPLETED,
-    CancelledError,
-    Future,
-    ProcessPoolExecutor,
-    as_completed,
-    wait,
-)
-from concurrent.futures.process import BrokenProcessPool
 from contextlib import ExitStack
-import math
 import os
 from pathlib import Path
-import signal
-import statistics
 import sys
 import time
-from collections.abc import Iterator, Mapping
-from typing import Any
+from typing import Any, Mapping
 
 from minidungeons.domain.mcts import MonteCarloTreeSearch
 from minidungeons.domain.personas import PERSONA_NAMES
+from minidungeons.domain.selection_policy import (
+    SelectionPolicy,
+    UCB1Policy,
+    evolved_policy_for,
+)
+from minidungeons.infrastructure.experiment_runner import (
+    CsvSchema,
+    ResultKey,
+    Row,
+    configure_parent_interrupts,
+    durable_writer,
+    load_results,
+    mean_with_ci95,
+    needs_header,
+    run_in_pool,
+)
 from minidungeons.infrastructure.paths import MD2_BENCHMARK_DIR, PROJECT_ROOT
 from minidungeons.infrastructure.traces import trace_path_for, trace_record, write_trace
-from minidungeons.domain.selectionPolicy import UCB1Policy
 
 RESULTS_DIR = PROJECT_ROOT / "data" / "results"
 SEARCH_POLICY = "tree_terminal_only"
-FIELDS = [
-    "persona", "map", "trial", "search_policy", "win", "died", "turns", "steps", "health_left",
-    "monster_ratio", "potion_ratio", "treasure_ratio", "interactive_ratio",
-    "iterations", "time_sec",
-]
-INTEGER_FIELDS = {"trial", "win", "died", "turns", "steps", "health_left", "iterations"}
-FLOAT_FIELDS = {
-    "monster_ratio", "potion_ratio", "treasure_ratio", "interactive_ratio", "time_sec",
+TREE_POLICIES = ("ucb1", "evolved", "ours")
+
+POLICY_FILES = {
+    "evolved": None,
+    "ours": PROJECT_ROOT / "data" / "rules" / "evolved_policies.json",
 }
-ResultKey = tuple[str, str, int]
-Task = tuple[str, str, int]
+DEFAULT_OUT = {
+    "ucb1": RESULTS_DIR / "ucb1_tree_terminal.csv",
+    "evolved": RESULTS_DIR / "evolved_tree_terminal.csv",
+    "ours": RESULTS_DIR / "gp_evolved.csv",
+}
+
+SCHEMA = CsvSchema(
+    fields=(
+        "persona", "map", "trial", "search_policy", "win", "died", "turns", "steps",
+        "health_left", "monster_ratio", "potion_ratio", "treasure_ratio",
+        "interactive_ratio", "iterations", "time_sec",
+    ),
+    key=("persona", "map", "trial"),
+    integers=frozenset(
+        {"trial", "win", "died", "turns", "steps", "health_left", "iterations"}
+    ),
+    floats=frozenset(
+        {"monster_ratio", "potion_ratio", "treasure_ratio", "interactive_ratio", "time_sec"}
+    ),
+)
+FIELDS = list(SCHEMA.fields)  # zgodnosc wsteczna dla skryptow analitycznych
+
 TABLE_PERSONAS = (
     ("R", "runner"),
     ("MK", "monster_killer"),
@@ -57,22 +81,42 @@ TABLE_METRICS = (
     ("Win Rate", "win", True),
     ("Time (sec)", "time_sec", False),
 )
+TABLE_TITLES = {
+    "ucb1": "UCB1 BASELINE",
+    "evolved": "EVOLVED TREE POLICY (eq. 6-9 z artykulu)",
+    "ours": "WLASNA EWOLUCJA GP",
+}
 
 
-def run_one(map_path: str, persona: str, trial: int, time_limit: float) -> dict:
-    agent = MonteCarloTreeSearch(map_path, policy=UCB1Policy())
+# --- pojedyncza proba -------------------------------------------------------
+
+
+def build_policy(tree_policy: str, persona: str) -> SelectionPolicy:
+    """Polityki tworzymy w workerze - skompilowana formula nie jest picklowalna."""
+
+    if tree_policy == "ucb1":
+        return UCB1Policy()
+    if tree_policy in POLICY_FILES:
+        return evolved_policy_for(persona, path=POLICY_FILES[tree_policy])
+    raise ValueError(f"Nieznana tree policy {tree_policy!r}; mam: {TREE_POLICIES}")
+
+
+def run_one(
+    map_path: str, persona: str, trial: int, time_limit: float, tree_policy: str = "ucb1"
+) -> Row:
+    agent = MonteCarloTreeSearch(map_path, policy=build_policy(tree_policy, persona))
     start = time.perf_counter()
     metrics = agent.play_single_tree(persona, time_limit_s=time_limit, seed=trial)
     elapsed = time.perf_counter() - start
     map_name = Path(map_path).stem
     return {
-        # slad wraca osobnym kluczem; save_result zdejmuje go przed zapisem CSV
+        # slad wraca osobnym kluczem; zapis do CSV zdejmuje go przed wierszem
         "trajectory": trace_record(
             persona=persona, map_name=map_name, trial=trial,
             actions=agent.played, path=agent.path, from_tree=agent.from_tree,
         ),
         "persona": persona, "map": map_name, "trial": trial,
-        "search_policy": SEARCH_POLICY,
+        "search_policy": f"{tree_policy}+{SEARCH_POLICY}",
         "win": int(metrics["reached_exit"]), "died": int(metrics["died"]),
         "turns": metrics["turns"], "steps": metrics["steps"],
         "health_left": metrics["health_left"],
@@ -84,174 +128,7 @@ def run_one(map_path: str, persona: str, trial: int, time_limit: float) -> dict:
     }
 
 
-def result_key(row: Mapping[str, object]) -> ResultKey:
-    return str(row["persona"]), str(row["map"]), int(row["trial"])
-
-
-def task_key(task: Task) -> ResultKey:
-    map_path, persona, trial = task
-    return persona, Path(map_path).stem, trial
-
-
-def normalize_row(row: Mapping[str, str]) -> dict[str, object]:
-    """Convert a CSV row back to the types returned by run_one()."""
-
-    missing = [field for field in FIELDS if row.get(field) in (None, "")]
-    if missing:
-        raise ValueError(f"niepelny wiersz CSV; brak pol: {', '.join(missing)}")
-    normalized: dict[str, object] = {}
-    for field in FIELDS:
-        value = row[field]
-        if field in INTEGER_FIELDS:
-            normalized[field] = int(value)
-        elif field in FLOAT_FIELDS:
-            normalized[field] = float(value)
-        else:
-            normalized[field] = value
-    return normalized
-
-
-def load_results(path: Path) -> dict[ResultKey, dict[str, object]]:
-    """Load completed trials so an interrupted experiment can resume safely."""
-
-    if not path.exists() or path.stat().st_size == 0:
-        return {}
-    results: dict[ResultKey, dict[str, object]] = {}
-    with path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        if reader.fieldnames != FIELDS:
-            raise ValueError(
-                f"{path} ma niezgodny naglowek; uzyj innego --out albo --restart"
-            )
-        for line_number, raw_row in enumerate(reader, start=2):
-            try:
-                row = normalize_row(raw_row)
-            except (TypeError, ValueError) as error:
-                raise ValueError(f"bledny wiersz {line_number} w {path}: {error}") from error
-            results[result_key(row)] = row
-    return results
-
-
-def ignore_interrupt_in_worker() -> None:
-    """Only the parent handles Ctrl+C and lets active trials finish cleanly."""
-
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    if hasattr(signal, "SIGBREAK"):
-        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
-
-
-def configure_parent_interrupts() -> None:
-    """Treat Ctrl+Break like Ctrl+C on Windows."""
-
-    if hasattr(signal, "SIGBREAK"):
-        signal.signal(signal.SIGBREAK, signal.default_int_handler)
-
-
-def submit_next(
-    pool: ProcessPoolExecutor,
-    task_iterator: Iterator[Task],
-    futures: dict[Future, Task],
-    time_limit: float,
-) -> bool:
-    try:
-        task = next(task_iterator)
-    except StopIteration:
-        return False
-    futures[pool.submit(run_one, *task, time_limit)] = task
-    return True
-
-
-def save_result(
-    row: dict[str, object],
-    writer: csv.DictWriter,
-    handle: Any,
-    results: dict[ResultKey, dict[str, object]],
-    total: int,
-    trace_handle: Any = None,
-) -> None:
-    trajectory = row.pop("trajectory", None)
-    key = result_key(row)
-    if key in results:
-        return
-    if trace_handle is not None and trajectory is not None:
-        write_trace(trace_handle, trajectory)
-    writer.writerow(row)
-    handle.flush()
-    os.fsync(handle.fileno())
-    results[key] = row
-    print(
-        f"[{len(results)}/{total}] {row['persona']:18s} {row['map']} "
-        f"trial={int(row['trial']):2d} win={row['win']} died={row['died']} "
-        f"iter={row['iterations']} ({row['time_sec']}s)",
-        flush=True,
-    )
-
-
-def run_pending_tasks(
-    tasks: list[Task],
-    time_limit: float,
-    workers: int,
-    writer: csv.DictWriter,
-    handle: Any,
-    results: dict[ResultKey, dict[str, object]],
-    total: int,
-    trace_handle: Any = None,
-) -> bool:
-    """Run a bounded number of trials; return True after a graceful pause."""
-
-    task_iterator = iter(tasks)
-    futures: dict[Future, Task] = {}
-    interrupted = False
-    pool = ProcessPoolExecutor(
-        max_workers=workers,
-        initializer=ignore_interrupt_in_worker,
-    )
-    try:
-        for _ in range(min(workers, len(tasks))):
-            submit_next(pool, task_iterator, futures, time_limit)
-
-        try:
-            while futures:
-                finished, _ = wait(futures, return_when=FIRST_COMPLETED)
-                for future in finished:
-                    row = future.result()
-                    save_result(row, writer, handle, results, total, trace_handle)
-                    del futures[future]
-                    submit_next(pool, task_iterator, futures, time_limit)
-        except KeyboardInterrupt:
-            interrupted = True
-            print(
-                "\nPrzerwa zgloszona. Koncze i zapisuje aktualnie wykonywane proby; "
-                "nie uruchamiam nowych...",
-                flush=True,
-            )
-            for future in list(futures):
-                if future.cancel():
-                    del futures[future]
-            for future in as_completed(futures):
-                try:
-                    row = future.result()
-                except (BrokenProcessPool, CancelledError):
-                    # A console signal can reach a newly spawned Windows worker
-                    # before its initializer starts. The unfinished trial has no
-                    # CSV row, so it will be retried automatically after resume.
-                    pass
-                else:
-                    save_result(row, writer, handle, results, total, trace_handle)
-                del futures[future]
-    finally:
-        pool.shutdown(wait=True, cancel_futures=interrupted)
-    return interrupted
-
-
-def mean_with_ci95(values: list[float]) -> tuple[float, float]:
-    """Return the arithmetic mean and a two-sided 95% normal CI half-width."""
-
-    mean = statistics.fmean(values)
-    if len(values) < 2:
-        return mean, 0.0
-    ci95 = 1.96 * statistics.stdev(values) / math.sqrt(len(values))
-    return mean, ci95
+# --- Tabela II --------------------------------------------------------------
 
 
 def format_table_value(mean: float, ci95: float, percentage: bool) -> str:
@@ -261,45 +138,40 @@ def format_table_value(mean: float, ci95: float, percentage: bool) -> str:
     return f"{mean:.{decimals}f} ± {ci95:.{decimals}f}"
 
 
-def summarize(rows: list[dict[str, object]]) -> None:
-    """Print the UCB1 baseline using the metric layout from paper Table II."""
+def summarize(rows: list[Row], tree_policy: str = "ucb1") -> None:
+    """Wypisz wyniki jednej polityki w ukladzie Tabeli II z artykulu."""
 
     grouped = {
         persona: [row for row in rows if row["persona"] == persona]
         for _, persona in TABLE_PERSONAS
     }
-    label_width = 21
-    value_width = 16
-    print("\n=== UCB1 BASELINE — TABELA II (średnia ± 95% CI) ===")
+    label_width, value_width = 21, 16
+    title = TABLE_TITLES.get(tree_policy, tree_policy)
+    print(f"\n=== {title} — TABELA II (średnia ± 95% CI) ===")
     print(
         f"{'Metric':<{label_width}}"
         + "".join(f"{short:>{value_width}}" for short, _ in TABLE_PERSONAS)
     )
-    for label, field, percentage in TABLE_METRICS:
+    for label, field_name, percentage in TABLE_METRICS:
         cells: list[str] = []
         for _, persona in TABLE_PERSONAS:
             persona_rows = grouped[persona]
             if not persona_rows:
                 cells.append("—")
                 continue
-            values = [float(row[field]) for row in persona_rows]
-            mean, ci95 = mean_with_ci95(values)
+            mean, ci95 = mean_with_ci95([float(row[field_name]) for row in persona_rows])
             cells.append(format_table_value(mean, ci95, percentage))
-        print(
-            f"{label:<{label_width}}"
-            + "".join(f"{cell:>{value_width}}" for cell in cells)
-        )
+        print(f"{label:<{label_width}}" + "".join(f"{cell:>{value_width}}" for cell in cells))
     print(
         f"{'Liczba prób (n)':<{label_width}}"
-        + "".join(
-            f"{len(grouped[persona]):>{value_width}}"
-            for _, persona in TABLE_PERSONAS
-        )
+        + "".join(f"{len(grouped[persona]):>{value_width}}" for _, persona in TABLE_PERSONAS)
     )
 
 
-def main() -> None:
-    configure_parent_interrupts()
+# --- CLI --------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--trials", type=int, default=50)
     parser.add_argument("--time-limit", type=float, default=300.0)
@@ -307,46 +179,90 @@ def main() -> None:
     parser.add_argument("--maps", nargs="*", default=None)
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument(
-        "--out",
-        type=Path,
-        default=RESULTS_DIR / "ucb1_tree_terminal.csv",
+        "--policy",
+        choices=TREE_POLICIES,
+        default="ucb1",
+        help="tree policy: UCB1 (baseline) albo ewoluowane formuly eq. 6-9",
     )
     parser.add_argument(
-        "--traces",
-        type=Path,
-        default=None,
+        "--out", type=Path, default=None,
+        help="domyslnie data/results/<policy>_tree_terminal.csv",
+    )
+    parser.add_argument(
+        "--traces", type=Path, default=None,
         help="plik JSONL ze sladami partii (domyslnie <out>_paths.jsonl)",
     )
     parser.add_argument(
-        "--no-traces",
-        action="store_true",
+        "--no-traces", action="store_true",
         help="nie zapisuj sladow partii, tylko metryki w CSV",
     )
     parser.add_argument(
-        "--restart",
-        action="store_true",
+        "--restart", action="store_true",
         help="nadpisz istniejacy CSV zamiast automatycznie wznowic eksperyment",
     )
     parser.add_argument(
-        "--report-only",
-        action="store_true",
+        "--report-only", action="store_true",
         help="tylko wypisz Tabele II z istniejacego --out; nie uruchamiaj zadnej proby",
     )
+    return parser
+
+
+def report_only(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.restart:
+        parser.error("--report-only i --restart wykluczaja sie")
+    if not args.out.exists():
+        parser.error(f"nie znaleziono pliku z wynikami: {args.out}")
+    try:
+        saved = load_results(args.out, SCHEMA)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    if not saved:
+        parser.error(f"{args.out} nie zawiera zadnych wynikow")
+    print(f"Wczytano {len(saved)} prob z: {args.out}")
+    summarize(list(saved.values()), args.policy)
+
+
+def make_reporter(
+    append: Any,
+    results: dict[ResultKey, Row],
+    total: int,
+    trace_handle: Any,
+) -> Any:
+    """Callback puli: zdejmij slad, odsiej duplikat, zapisz wiersz, zamelduj."""
+
+    def on_result(row: Row) -> None:
+        trajectory = row.pop("trajectory", None)
+        key = SCHEMA.row_key(row)
+        if key in results:
+            return
+        if trace_handle is not None and trajectory is not None:
+            write_trace(trace_handle, trajectory)
+        append(row)
+        results[key] = row
+        print(
+            f"[{len(results)}/{total}] {row['persona']:18s} {row['map']} "
+            f"trial={int(row['trial']):2d} win={row['win']} died={row['died']} "
+            f"iter={row['iterations']} ({row['time_sec']}s)",
+            flush=True,
+        )
+
+    return on_result
+
+
+def task_key(task: Mapping[str, object] | tuple) -> ResultKey:
+    map_path, persona, trial = task[0], task[1], task[2]
+    return persona, Path(str(map_path)).stem, int(trial)  # type: ignore[return-value]
+
+
+def main() -> None:
+    configure_parent_interrupts()
+    parser = build_parser()
     args = parser.parse_args()
+    if args.out is None:
+        args.out = DEFAULT_OUT[args.policy]
 
     if args.report_only:
-        if args.restart:
-            parser.error("--report-only i --restart wykluczaja sie")
-        if not args.out.exists():
-            parser.error(f"nie znaleziono pliku z wynikami: {args.out}")
-        try:
-            saved = load_results(args.out)
-        except (OSError, ValueError) as error:
-            parser.error(str(error))
-        if not saved:
-            parser.error(f"{args.out} nie zawiera zadnych wynikow")
-        print(f"Wczytano {len(saved)} prob z: {args.out}")
-        summarize(list(saved.values()))
+        report_only(parser, args)
         return
 
     if args.trials < 0:
@@ -360,7 +276,7 @@ def main() -> None:
     if args.maps:
         map_paths = [path for path in map_paths if path.stem in set(args.maps)]
     all_tasks = [
-        (str(map_path), persona, trial)
+        (str(map_path), persona, trial, args.time_limit, args.policy)
         for persona in args.personas
         for map_path in map_paths
         for trial in range(args.trials)
@@ -368,24 +284,22 @@ def main() -> None:
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.restart:
-        existing_results: dict[ResultKey, dict[str, object]] = {}
+        existing_results: dict[ResultKey, Row] = {}
     else:
         try:
-            existing_results = load_results(args.out)
+            existing_results = load_results(args.out, SCHEMA)
         except ValueError as error:
             parser.error(str(error))
 
     requested_keys = {task_key(task) for task in all_tasks}
-    results = {
-        key: row for key, row in existing_results.items() if key in requested_keys
-    }
+    results = {key: row for key, row in existing_results.items() if key in requested_keys}
     unrelated_count = len(existing_results) - len(results)
     tasks = [task for task in all_tasks if task_key(task) not in results]
     total = len(all_tasks)
     print(
         f"{total} gier (persony={args.personas}, mapy={len(map_paths)}, "
         f"proby={args.trials}, limit={args.time_limit:.0f}s, workers={args.workers}); "
-        f"policy={SEARCH_POLICY}, zapisane={len(results)}, pozostalo={len(tasks)}",
+        f"policy={args.policy}+{SEARCH_POLICY}, zapisane={len(results)}, pozostalo={len(tasks)}",
         flush=True,
     )
     if unrelated_count:
@@ -396,35 +310,27 @@ def main() -> None:
         )
 
     start = time.perf_counter()
-    create_file = args.restart or not args.out.exists() or args.out.stat().st_size == 0
+    create_file = needs_header(args.out, restart=args.restart)
     mode = "w" if create_file else "a"
     trace_path = None if args.no_traces else (args.traces or trace_path_for(args.out))
     interrupted = False
     with ExitStack() as stack:
         handle = stack.enter_context(args.out.open(mode, newline="", encoding="utf-8"))
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        if create_file:
-            writer.writeheader()
-            handle.flush()
-            os.fsync(handle.fileno())
+        append = durable_writer(handle, SCHEMA, write_header=create_file)
         trace_handle = None
         if trace_path is not None:
             trace_path.parent.mkdir(parents=True, exist_ok=True)
             trace_handle = stack.enter_context(trace_path.open(mode, encoding="utf-8"))
         if tasks:
-            interrupted = run_pending_tasks(
+            interrupted = run_in_pool(
+                run_one,
                 tasks,
-                args.time_limit,
-                args.workers,
-                writer,
-                handle,
-                results,
-                total,
-                trace_handle,
+                workers=args.workers,
+                on_result=make_reporter(append, results, total, trace_handle),
             )
 
     print(f"\nczas calosci: {(time.perf_counter() - start) / 3600:.2f} h")
-    summarize(list(results.values()))
+    summarize(list(results.values()), args.policy)
     print(f"wyniki: {args.out}")
     if trace_path is not None:
         print(f"slady partii: {trace_path}")

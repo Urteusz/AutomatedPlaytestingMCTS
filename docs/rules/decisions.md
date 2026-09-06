@@ -73,8 +73,19 @@ Mechanizm: przy `binary` Runner ma utility ≈ `−1 − 0,01·kroki`, więc jed
 co optymalizuje, to nie ruszać się. Completionist ma `0,7·IC`, gęsty sygnał do
 zbierania obiektów, a wyjście trafia po drodze — stąd odwrócenie kolejności.
 
-`graded` został usunięty z kodu i konfiguracji — `binary` jest jedyną
-implementacją `PE`.
+`binary` jest jedyną implementacją `PE` **w funkcjach użyteczności person**
+(`personas.py`), czyli tam, gdzie ta kalibracja obowiązuje. `graded` i `shortN`
+zostały w silniku (`engine.graded_proximity_to_exit`,
+`engine.short_proximity_to_exit`) i są wybieralne **wyłącznie jako terminal
+`PE` ewoluowanej tree policy** (`expression.resolve_pe`, pole `pe_mode`
+w `data/rules/*_policies.json`). UCB1 w ogóle nie czyta terminali Tabeli I, więc
+baseline pozostaje nienaruszony niezależnie od tego ustawienia.
+
+Uzasadnienie rozdziału: Tabela I jest w artykule podpisana jako lista zmiennych
+dla drzew równań, osobno od użyteczności Eq. 2–5. Dodatkowo eq. (6) zawiera człon
+`PE²·(PE+1)`, który przy `PE ∈ {0, −1}` jest tożsamościowo zerowy — zmierzone:
+`t_R(PE=0) = t_R(PE=−1) = 9,6300`. GP nie wyewoluowałoby wyrażenia, w którym 60%
+drzewa jest stałą, więc oryginalne `PE` w tree policy było najpewniej ciągłe.
 
 Otwarta uwaga mechanizmowa, nie powód do zmiany: `c = √2` w UCB1 wymaga
 nagrody ograniczonej do `[0,1]` (MCTS §III-A, cytat dosłowny), a baseline

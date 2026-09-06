@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "source": "Holmgard, Green, Liapis, Togelius 2018, arXiv:1802.06881v1, eq. (6)-(9)",
+  "pe_mode": "binary",
+  "policies": {
+    "runner": "6.235*ST*PE*PE*(PE + 1) + Rbar*(1 - HL)",
+    "monster_killer": "4*MS*PE*(MS + 2*HL*(PE - IC))",
+    "treasure_collector": "2*PD + 2*MS + TO + 3*Rbar + ST + PE + 0.19",
+    "completionist": "ST*MS*(ST*ST*MS + IC) + Rbar - TO + IC - PE + 2*ST*PE*(ST*MS + 1)"
+  },
+  "notes": {
+    "operators": "Zbior funkcji artykulu to +, -, *, / - potegi zapisujemy jako iloczyny (PE*PE, ST*ST).",
+    "division": "Artykul nie podaje konwencji dzielenia ochronnego; przyjmujemy 1.0 przy dzielniku 0 (expression.protected_division).",
+    "pe_mode": "PE binarne (jak w utility person, docs/rules/decisions.md) - zmierzone jako lepsze dla eq. 6 niz ciagle: 2/9 vs 0/9 wygranych (runner, 3 mapy x 3 seedy, 4000 iteracji). Czlon PE*PE*(PE+1) jest NIEMONOTONICZNY: przy ciaglym PE ma maksimum w ~2/3 drogi od wyjscia, wiec nagradza bledzenie. Jest sensowny tylko przy PE sci\u015bnietym do waskiego zakresu. graded_proximity_to_exit() zostaje w silniku jako wariant kontrolny.",
+    "eq9_typo": "W opublikowanej eq. (9) wystepuje '(ST*MS* + 1)' - kropka mnozenia bez operandu. Czytamy jako (ST*MS + 1).",
+    "ic_ambiguity": "IC = zabici wrogowie + wypite potiony + otwarte skarby / ich poczatkowa suma (metric_values()['interactive_ratio']), zgodnie z rozstrzygnieciem w docs/rules/decisions.md: footnote Tabeli I nazywa IC obiektami nie-potworami, ale to lamie IC <= max(PD, TO) w 8 z 8 wierszy Tabeli II.",
+    "terminal_source": "'rollout' - zmienne Tabeli I to srednia po stanach koncowych symulacji przechodzacych przez wezel, ta sama semantyka co R. Zgodne ze zdaniem artykulu o 'metrics collected from the game's state after 10 random moves'. Skutek uboczny: srednia binarnego PE po rolloutach jest ciagla - to ulamek symulacji dochodzacych do wyjscia, czyli krotkozasiegowy sygnal o promieniu rownym glebokosci rollout-u (10). Wariant 'node' (odczyt ze stanu w wezle) daje gorsze wyniki: 1/9 vs 2/9."
+  },
+  "terminal_source": "rollout"
+}

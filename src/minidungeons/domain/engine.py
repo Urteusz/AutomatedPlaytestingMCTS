@@ -126,6 +126,8 @@ class MiniDungeon:
         )
         self._load_blueprint()
         self.portal_links = self._load_portal_links(portal_pairs_path, portal_pairs)
+        self.exit_distances = self._compute_exit_distances()
+        self._exit_distance_span = max(self.exit_distances.values(), default=0)
         self.reset()
 
     def _load_blueprint(self) -> None:
@@ -296,6 +298,56 @@ class MiniDungeon:
         """PE = 0 na kaflu wyjscia, -1 wszedzie indziej."""
 
         return 0.0 if self.hero_position == self.exit else -1.0
+
+    def graded_proximity_to_exit(self) -> float:
+        """PE ciagle w [-1, 0]: 0 na wyjsciu, -1 na najdalszym kaflu mapy.
+
+        Wariant wymagany przez ewoluowane tree policy z arXiv:1802.06881 - przy
+        binarnym PE czlon PE^2*(PE+1) z eq. (6) zeruje sie tozsamosciowo.
+        Utility person nadal korzysta z binarnego `proximity_to_exit`.
+        """
+
+        distance = self.exit_distances.get(self.hero_position)
+        if distance is None:  # kafel odciety od wyjscia
+            return -1.0
+        if not self._exit_distance_span:
+            return 0.0
+        return -distance / self._exit_distance_span
+
+    def short_proximity_to_exit(self, radius: int) -> float:
+        """PE krotkozasiegowe: gradient tylko w promieniu `radius` od wyjscia.
+
+        Poza promieniem -1, czyli tak jak PE binarne - agent nie ma kompasu na
+        skale mapy, wiec win rate baseline'u zostaje na poziomie artykulu
+        (zmierzone: short3 16,7% wobec binary 16,7%), ale wzory eq. 6-9 dostaja
+        niezerowy gradient tam, gdzie wyjscie jest w zasiegu.
+        """
+
+        distance = self.exit_distances.get(self.hero_position)
+        if distance is None or distance >= radius:
+            return -1.0
+        return -distance / radius
+
+    def _compute_exit_distances(self) -> dict[Coord, int]:
+        """BFS 0-1 od wyjscia; portale sa krawedziami o koszcie 0, bo teleport
+        dzieje sie w tej samej turze. Teren i portale sa niemutowalne, wiec
+        wynik liczymy raz i klony go wspoldziela."""
+
+        distances: dict[Coord, int] = {self.exit: 0}
+        queue: deque[Coord] = deque([self.exit])
+        while queue:
+            position = queue.popleft()
+            linked = self.portal_links.get(position)
+            if linked is not None and linked not in distances:
+                distances[linked] = distances[position]
+                queue.appendleft(linked)
+            for token in DIRECTION_DELTA:
+                neighbour = self._offset(position, token)
+                if neighbour in distances or not self._is_passable(neighbour):
+                    continue
+                distances[neighbour] = distances[position] + 1
+                queue.append(neighbour)
+        return distances
 
     def legal_actions(self) -> tuple[Action, ...]:
         if self.done:

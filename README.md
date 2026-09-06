@@ -10,18 +10,24 @@ jest zamrożony; modułem badawczym jest MCTS.
 2. `MiniDungeon.step()` wykonuje akcję bohatera, a potem deterministyczne tury NPC.
 3. Stan udostępnia `legal_actions()`, `clone()`, `state_key()` i metryki gry.
 4. `MonteCarloTreeSearch` buduje drzewo na klonach stanu, a liście ocenia
-   funkcją użyteczności wybranej persony.
-5. `cli/mcts_experiment` uruchamia próby w osobnych procesach i zapisuje CSV.
+   funkcją użyteczności wybranej persony. Kryterium zejścia dostarcza
+   `domain/selection_policy` — UCB1 albo formuła wyewoluowana przez GP.
+5. `cli/mcts_experiment` definiuje pojedynczą próbę, a `experiment_runner`
+   rozdziela je na procesy i zapisuje wznawialny CSV.
 
 ```mermaid
 flowchart LR
     Exp[cli/mcts_experiment] --> MCTS[domain/mcts]
+    Exp --> Run[infrastructure/experiment_runner]
     Rnd[cli/random_agent] --> Env
     MCTS --> Env[domain/engine: MiniDungeon]
     MCTS --> Pers[domain/personas: utility]
+    MCTS --> Pol[domain/selection_policy: UCB1 / evolved]
+    Pol --> Expr[domain/expression: drzewa wyrażeń]
+    Evo[domain/evolution: GP] --> Expr
     Env --> Rules[(data/rules)]
     Env --> Maps[(data/maps/md2/benchmark)]
-    Exp --> Results[(data/results/*.csv)]
+    Run --> Results[(data/results/*.csv)]
     Exp --> Traces[(data/results/*_paths.jsonl)]
     Play[frontend/game_loop] --> Env
     Heat[frontend/heatmap] --> Env
@@ -39,8 +45,8 @@ algorytmem a domeną nie ma warstwy serwisowej ani repozytorium.
 | `domain/engine` | stan, akcje, NPC, reguły, metryki | person, MCTS, wejścia-wyjścia |
 | `domain/personas` | funkcje użyteczności czterech person | drzewa MCTS |
 | `domain/mcts` | węzeł, UCB1, selekcja, ekspansja, rollout, propagacja | CSV, procesów, argumentów CLI |
-| `infrastructure` | kanoniczne ścieżki, zapis i odczyt śladów partii | przebiegu tury |
-| `cli` | argumenty, równoległość, zapis wyników | logiki potworów |
+| `infrastructure` | kanoniczne ścieżki, ślady partii, wznawialny CSV i pula procesów | przebiegu tury, person, tree policy |
+| `cli` | argumenty, definicja pojedynczej próby, formatowanie tabel | logiki potworów |
 | `frontend` | rysowanie planszy, ręczna rozgrywka, heatmapy | reguł gry — akcje bierze z `legal_actions()` |
 
 Zależności biegną do środka: `cli` woła `domain`, a `domain/mcts` woła
@@ -48,6 +54,58 @@ Zależności biegną do środka: `cli` woła `domain`, a `domain/mcts` woła
 `GameService`, sesje REST) istniała we wcześniejszej wersji i została usunięta —
 MCTS z niej nie korzystał. Jeśli powstanie wizualizacja, adapter należy dopisać
 **obok** domeny, nie pod agentem.
+
+## Jak czytać kod MCTS
+
+Cały algorytm to **jedna pętla** w `MonteCarloTreeSearch._iterate()`. Reszta
+`domain/mcts.py` to dwa protokoły zbudowane na tej pętli i różniące się wyłącznie
+warunkiem stopu. Jeśli czytasz ten kod pierwszy raz, zacznij od `_iterate` —
+wszystko inne jest jego opakowaniem.
+
+Jedna iteracja, w kolejności:
+
+1. **Selekcja** — schodź w dół, póki węzeł jest w pełni rozwinięty:
+   `node.best_child(policy)` → `policy.select(node)`. Wybór spośród
+   `viable_children()`, czyli dzieci jeszcze niewyczerpanych.
+2. **Ekspansja** — jeśli zostały nieprzetestowane akcje i gra trwa,
+   `node.expand(rng)` tworzy **jedno** losowe dziecko na sklonowanym stanie.
+3. **Symulacja** — `rollout()` gra 10 losowych ruchów na kopii i zwraca
+   użyteczność persony (`personas.utility`). Stan węzła zostaje zamrożony.
+4. **Propagacja** — `backpropagate()` dolicza wizytę i użyteczność każdemu
+   przodkowi aż do korzenia włącznie, i odświeża znacznik wyczerpania.
+
+Dwa protokoły nad tą pętlą:
+
+| Metoda | Budżet | Kiedy kończy | Co zwraca |
+| --- | --- | --- | --- |
+| `search()` | liczba iteracji | wyczerpanie budżetu albo całego drzewa | jedna akcja o najwyższej średniej użyteczności |
+| `play_single_tree()` | czas, iteracje albo oba | **pierwszy wygrywający węzeł drzewa** albo koniec budżetu | metryki całej odegranej partii |
+
+`play_single_tree` to protokół z artykułu: jedno drzewo na mapę, budowane aż do
+znalezienia terminalnego węzła z wyjściem, potem odegranie tej sekwencji.
+Zwycięstwo napotkane wyłącznie w rolloucie **nie** kończy szukania — losowe ruchy
+symulacji nie są sekwencją do odegrania. Bez wygranej zostaje `_greedy_sequence()`,
+a `from_tree` mówi, który z tych dwóch przypadków zaszedł.
+
+### Trzy pojęcia, które mylą przy pierwszym czytaniu
+
+**`TreeSpec`** — tree policy deklaruje trzy rzeczy (`needs_terminals`, `pe_mode`,
+`terminal_source`), a `TreeSpec.for_policy()` zbiera je raz przy tworzeniu drzewa.
+Dzięki temu `Node` nie zna żadnej konkretnej polityki — dostaje gotową
+specyfikację i przekazuje ją dzieciom. UCB1 zostawia wartości domyślne i nie płaci
+za zmienne Tabeli I ani czasem, ani pamięcią.
+
+**`exhausted`** — węzeł wyczerpany to terminalny liść albo węzeł w pełni
+rozwinięty, którego wszystkie dzieci są wyczerpane. UCB1 wychodzi z martwej
+gałęzi sam, dzięki członowi eksploracyjnemu; ewoluowana formuła (eq. 6–9) nie ma
+takiego członu i bez tego znacznika potrafiłaby wybierać ten sam martwy liść
+w nieskończoność.
+
+**`terminal_source`** — zmienne Tabeli I dla ewoluowanej polityki biorą się albo
+ze stanu zamrożonego w węźle (`"node"`), albo ze średniej po stanach końcowych
+symulacji przechodzących przez węzeł (`"rollout"`, ta sama semantyka co `R`).
+Domyślne jest `"rollout"`, bo daje lepsze wyniki — szczegóły w
+`data/rules/tree_policies.json`.
 
 ## Szybki start
 
@@ -194,8 +252,8 @@ docs/
   reference/articles/         publikacje źródłowe
   benchmark.md                walidacja i niepewności rekonstrukcji map
 src/minidungeons/
-  domain/                     silnik gry, persony, reguły i MCTS
-  infrastructure/             kanoniczne ścieżki i ślady partii
+  domain/                     silnik gry, persony, reguły, MCTS i ewolucja GP
+  infrastructure/             ścieżki, ślady partii, runner eksperymentów
   cli/                        programy konsolowe: agent losowy i eksperyment
   frontend/                   pygame, wymaga extras `gui`:
                                 game_loop.py — ręczna rozgrywka

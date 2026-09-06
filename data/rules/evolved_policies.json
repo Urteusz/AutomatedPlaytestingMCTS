@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source": "Wlasna ewolucja GP (domain/evolution.py), nie formuly z artykulu",
+  "pe_mode": "graded",
+  "terminal_source": "rollout",
+  "policies": {
+    "runner": "(PE - -0.4562) - -0.4562"
+  },
+  "notes": {
+    "runner": "Demo GP: populacja 20, 12 generacji, mapy map08+map01, budzet 4000 iteracji, seed 7. Fitness najlepszego -0,540 -> -0,200; srednia populacji -0,865 -> -0,466. Stala dodaje sie do kazdego dziecka jednakowo, wiec nie wplywa na argmax - polityka jest efektywnie czystym PE. Ten sam artefakt (bezuzyteczna stala addytywna) autorzy odnotowali w eq. 8: 'an added 0.19 constant which obviously does not affect the tree policy'.",
+    "wyniki": "9/9 wygranych (map08/map01/map11 x 3 seedy, 4000 iteracji) wobec 3/9 baseline'u UCB1 i 0/9 dla eq. 6. Na map08 85 iteracji do wygranej wobec 1178 baseline'u (13,9x szybciej). Przy pe_mode=binary spada do 4/9 - kompas z calej mapy jest istotnym skladnikiem przewagi.",
+    "pe_mode": "graded (-dystans_BFS/maks, portale jako koszt 0) TYLKO w terminalu tree policy. Utility person zostaje binarne, wiec kalibracja baseline'u z docs/rules/decisions.md jest nienaruszona - UCB1 nie czyta terminali. Uzasadnienie: Tabela I jest w artykule podpisana jako lista zmiennych dla drzew rownan, osobno od utility Eq. 2-5."
+  }
+}
