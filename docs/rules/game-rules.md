@@ -123,11 +123,11 @@ Decyzje: `equal_path_tie_break`, `illegal_move`, `npc_exit_behavior`.
 - domyślnie `geometry: "axis8"` — cztery osie **oraz** dokładne skosy 45°;
   pozostałe wartości to `axis4` (tylko osie) i `raycast` (dowolny kąt);
 - blokują ją wyłącznie ściany; postacie i obiekty jej nie blokują;
-- `corners` decyduje, co się dzieje, gdy promień trafia dokładnie w narożnik
-  czterech kafli: `permissive` (domyślnie — blokuje wtedy i tylko wtedy, gdy
-  **oba** kafle boczne są ścianami, czyli szczelina ma zerową szerokość),
-  `strict` (blokuje, gdy którykolwiek bok jest ścianą) i `transparent`
-  (narożnik nigdy nie blokuje);
+- gdy promień trafia dokładnie w narożnik czterech kafli, blokuje go wtedy
+  i tylko wtedy, gdy **oba** kafle boczne są ścianami — czyli szczelina ma
+  zerową szerokość. Reguła jest **stała, bez przełącznika**: warianty
+  `strict` i `transparent` zostały refutowane rysunkiem MD2 Fig. 1 i usunięte
+  z kodu (patrz `line_of_sight_geometry` w `decisions.md`);
 - `distance_metric` (`chebyshev` domyślnie, alternatywa `manhattan`) daje
   dystans dla zasięgu czaru czarodzieja i dla wyboru najbliższego celu przez
   bloba i ogra; przy `axis4` obie metryki są równoważne, różnią się tylko na

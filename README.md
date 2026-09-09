@@ -25,6 +25,12 @@ flowchart LR
     MCTS --> Pol[domain/selection_policy: UCB1 / evolved]
     Pol --> Expr[domain/expression: drzewa wyrażeń]
     Evo[domain/evolution: GP] --> Expr
+    Evl[cli/evolve] --> Evo
+    Evl --> Run
+    Evl --> Fit[domain/gp_fitness: f = utility persony]
+    Fit --> MCTS
+    Evl --> Pols[(data/rules/evolved_policies.json)]
+    Pols --> Pol
     Env --> Rules[(data/rules)]
     Env --> Maps[(data/maps/md2/benchmark)]
     Run --> Results[(data/results/*.csv)]
@@ -144,6 +150,47 @@ Inny plik wskazuje `--out`:
 
 Drukuje układ z Tabeli II — Monsters, Potions, Treasures, Interactive Objects,
 Win Rate oraz Time — jako średnia ± 95% przedział ufności dla R, MK, TC i C.
+
+## Ewolucja tree policy
+
+Formuła zastępująca UCB1 nie jest wpisywana ręcznie — wyłania ją programowanie
+genetyczne, protokołem z sekcji VI-A artykułu: 4 persony × 3 niezależne
+uruchomienia × 100 generacji × 100 osobników na 5 wyspach, fitness uśredniany po
+sześciu mapach treningowych (1, 2, 3, 4, 7, 10).
+
+```powershell
+.\.venv\Scripts\python.exe -m src.minidungeons.cli.evolve --workers 12
+```
+
+Fitness osobnika to **użyteczność persony na koniec partii** (`f_R = U_R`), a nie
+osobny wzór. Partia idzie budżetem **iteracyjnym**, nie czasowym — czas nie jest
+odtwarzalny, więc fitness liczony na nim zmieniałby się z obciążeniem maszyny.
+Sprawdzone: identyczna generacja przy 8 i przy 15 workerach daje ten sam
+`best_fitness`.
+
+Eksperyment jest wznawialny **na poziomie uruchomienia** (persona × run):
+ukończone uruchomienia lądują w `data/results/gp_runs.json` i po restarcie są
+pomijane; przerwane liczy się od pierwszej generacji. Uruchomienia idą wszerz —
+najpierw run 0 dla wszystkich person, potem run 1 — żeby przerwanie w połowie
+zostawiło komplet person, a nie komplet uruchomień dla połowy person.
+
+Dziennik generacji (`data/results/gp_generations.csv`) ma po wierszu na
+generację: `best_fitness`, `mean_fitness`, liczba unikalnych chromosomów,
+rozmiar i postać najlepszej formuły. To materiał na wykres krzywych fitnessu.
+
+Zwycięskie formuły przepisuje się do pliku polityk osobnym wywołaniem:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.minidungeons.cli.evolve --promote
+```
+
+Wybór spośród trzech uruchomień idzie **po głównej metryce persony**, nie po
+fitnessie — tak jak w artykule. Po `--promote` wyewoluowane persony gra się tym
+samym eksperymentem co baseline, przełącznikiem `--policy ours`.
+
+Koszt zmierzony na Ryzenie 7 7700 przy budżecie 2000 iteracji: ~160 s na pierwszą
+generację (600 partii) i ~120 s na kolejne, gdy cache zaczyna łapać elitę —
+czyli około 3 h na jedno uruchomienie i 35–45 h na pełny protokół.
 
 ## Ręczna rozgrywka
 

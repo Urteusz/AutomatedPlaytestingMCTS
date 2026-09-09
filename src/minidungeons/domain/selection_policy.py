@@ -16,21 +16,22 @@ DEFAULT_TREE_POLICIES_PATH = PROJECT_ROOT / "data" / "rules" / "tree_policies.js
 class SelectionPolicy(ABC):
     """Kryterium zejscia w fazie selekcji plus deklaracja potrzeb wobec wezlow.
 
-    Trzy atrybuty klasowe to caly kontrakt miedzy polityka a drzewem; `mcts`
+    Dwa atrybuty klasowe to caly kontrakt miedzy polityka a drzewem; `mcts`
     czyta je raz przez `TreeSpec.for_policy` i nigdy nie pyta o konkretna klase:
 
     * `needs_terminals`  - czy wezly maja liczyc zmienne Tabeli I (UCB1: nie,
       wiec nie placi za nie ani czasem, ani pamiecia);
-    * `pe_mode`          - wariant terminala PE ("binary" / "graded" / "shortN",
-      patrz `expression.resolve_pe`). Dotyczy WYLACZNIE tree policy - utility
-      person zostaje binarne (docs/rules/decisions.md);
-    * `terminal_source`  - skad brac zmienne: "node" (stan zamrozony w wezle)
-      czy "rollout" (srednia po stanach koncowych symulacji, jak R).
+    * `pe_mode`          - wariant terminala PE ("binary" albo "graded", patrz
+      `expression.resolve_pe`). Dotyczy WYLACZNIE tree policy - utility person
+      zostaje binarne (docs/rules/decisions.md).
+
+    Zmienne Tabeli I sa zawsze srednia po stanach koncowych symulacji, bo tak
+    mowi sekcja V-A artykulu: "The different personas use metrics collected from
+    the game's state after 10 random moves" - ta sama semantyka co R.
     """
 
     needs_terminals: bool = False
     pe_mode: str = "binary"
-    terminal_source: str = "node"
 
     @abstractmethod
     def select(self, parent: "Node") -> "Node":
@@ -80,14 +81,10 @@ class EvolvedPolicy(SelectionPolicy):
         expression: Expr | str,
         *,
         pe_mode: str = "binary",
-        terminal_source: str = "rollout",
         label: str = "",
     ) -> None:
-        if terminal_source not in ("node", "rollout"):
-            raise ValueError(f"terminal_source musi byc 'node' albo 'rollout', jest {terminal_source!r}")
         self.expression: Expr = parse(expression) if isinstance(expression, str) else expression
         self.pe_mode = pe_mode
-        self.terminal_source = terminal_source
         self.label = label
         self._score = compile_expression(self.expression)
 
@@ -98,10 +95,8 @@ class EvolvedPolicy(SelectionPolicy):
         best_node = None
         best_score = float("-inf")
         score = self._score
-        node_source = self.terminal_source == "node"
         for child in parent.viable_children():
-            terminals = child.terminals if node_source else child.mean_terminals()
-            value = score(terminals, child.mean_utility())
+            value = score(child.mean_terminals(), child.mean_utility())
             if value > best_score:
                 best_score = value
                 best_node = child
@@ -120,7 +115,6 @@ def evolved_policy_for(
     *,
     path: str | Path | None = None,
     pe_mode: str | None = None,
-    terminal_source: str | None = None,
 ) -> EvolvedPolicy:
     """Zbuduj polityke persony z pliku formul (domyslnie eq. 6-9 z artykulu)."""
 
@@ -129,7 +123,4 @@ def evolved_policy_for(
     if persona not in formulas:
         raise ValueError(f"Brak formuly dla persony {persona!r}; mam: {sorted(formulas)}")
     mode = pe_mode or str(data.get("pe_mode", "binary"))
-    source = terminal_source or str(data.get("terminal_source", "rollout"))
-    return EvolvedPolicy(
-        formulas[persona], pe_mode=mode, terminal_source=source, label=persona
-    )
+    return EvolvedPolicy(formulas[persona], pe_mode=mode, label=persona)
