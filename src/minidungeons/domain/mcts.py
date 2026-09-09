@@ -34,18 +34,20 @@ class TreeSpec:
 
     collect_terminals: bool = False
     pe_mode: str = "binary"
-    terminal_source: str = "node"
 
     @classmethod
     def for_policy(cls, policy: SelectionPolicy) -> "TreeSpec":
         return cls(
             collect_terminals=policy.needs_terminals,
             pe_mode=policy.pe_mode,
-            terminal_source=policy.terminal_source,
         )
 
 
 DEFAULT_SPEC = TreeSpec()
+
+# warianty "best sequence of actions it discovered" (sekcja V) - patrz
+# `_fallback_sequence` i docs/rules/decisions.md
+FALLBACKS = ("utility", "mean", "visits")
 
 
 class Node:
@@ -70,12 +72,8 @@ class Node:
         # wyczerpane dzieci. Bez tego polityka bez czlonu eksploracyjnego (np.
         # ewoluowana formula) potrafi w nieskonczonosc wybierac martwy lisc.
         self.exhausted = not self.untried
-        # zmienne Tabeli I odczytane ze stanu w wezle (terminal_source="node")
-        self.terminals: tuple[float, ...] | None = (
-            terminal_values(env, pe_mode=spec.pe_mode) if spec.collect_terminals else None
-        )
-        # ...oraz ich suma po stanach koncowych symulacji przechodzacych przez
-        # ten wezel (terminal_source="rollout") - ta sama semantyka co R
+        # suma zmiennych Tabeli I po stanach koncowych symulacji przechodzacych
+        # przez ten wezel - ta sama semantyka co R (sekcja V-A artykulu)
         self.terminal_sums: list[float] | None = (
             [0.0] * len(TERMINAL_ORDER) if spec.collect_terminals else None
         )
@@ -173,7 +171,7 @@ class MonteCarloTreeSearch:
                 break
             sim.step(rng.choice(legal))
         terminals = None
-        if self.spec.terminal_source == "rollout":
+        if self.spec.collect_terminals:
             terminals = terminal_values(sim, pe_mode=self.spec.pe_mode)
         return utility(persona, sim), terminals
 
@@ -241,6 +239,7 @@ class MonteCarloTreeSearch:
         seed: int = 0,
         *,
         max_iterations: int | None = None,
+        fallback: str = "utility",
     ) -> dict[str, int | float | bool]:
         """Protokol z artykulu: jedno drzewo na mape, potem odegranie najlepszej
         sekwencji.
@@ -260,7 +259,10 @@ class MonteCarloTreeSearch:
         winning_actions, iterations = self._build_tree(persona, rng, deadline, max_iterations)
         # rozroznienie sladu: wygrana z drzewa czy zachlanny fallback
         self.from_tree = winning_actions is not None
-        sequence = winning_actions if winning_actions is not None else self._greedy_sequence()
+        sequence = (
+            winning_actions if winning_actions is not None
+            else self._fallback_sequence(persona, fallback)
+        )
         for action in sequence:
             if self.env.done:
                 break
@@ -278,11 +280,70 @@ class MonteCarloTreeSearch:
             current = current.parent
         return list(reversed(actions))
 
-    def _greedy_sequence(self) -> list[Action]:
-        # brak wygranej w budzecie - zachlannie po najwyzszej sredniej utility
+    def _fallback_sequence(self, persona: str, mode: str) -> list[Action]:
+        """Sekwencja odgrywana po wyczerpaniu budzetu bez wygranej.
+
+        Artykul, sekcja V: agent "will take the best sequence of actions it
+        discovered", ale nie mowi, co znaczy "best". Trzy odczytania, wszystkie
+        wybieralne, bo roznica jest MIERZALNA na metrykach obiektowych Tabeli II:
+
+        * "utility" - sciezka do wezla o najwyzszej uzytecznosci persony
+          policzonej na stanie tego wezla (`_best_utility_node_sequence`);
+        * "mean"    - zejscie zachlanne po `mean_utility` dziecka;
+        * "visits"  - zejscie po liczbie wizyt, czyli "robust child" - marsz
+          glowna, wypracowana galezia drzewa.
+
+        Pomiary i wybor: docs/rules/decisions.md.
+        """
+
+        if mode == "utility":
+            return self._best_utility_node_sequence(persona)
+        if mode == "mean":
+            return self._greedy_descent(Node.mean_utility)
+        if mode == "visits":
+            return self._greedy_descent(lambda node: float(node.visits))
+        raise ValueError(f"Nieznany fallback {mode!r}; oczekiwano {FALLBACKS}")
+
+    def _greedy_descent(self, key) -> list[Action]:
+        """Zejscie zachlanne od korzenia po podanym kluczu, do pierwszego wezla
+        bez dzieci."""
+
         actions: list[Action] = []
         node = self.root
         while node.children:
-            node = max(node.children.values(), key=Node.mean_utility)
+            node = max(node.children.values(), key=key)
             actions.append(node.action)
         return actions
+
+    def _best_utility_node_sequence(self, persona: str) -> list[Action]:
+        """Sciezka do wezla o najwyzszej uzytecznosci persony.
+
+        Artykul, sekcja V: agent buduje jedno drzewo na mape i przerywa budowe
+        po znalezieniu wygranej "or it reaches timeout, wherein it will take the
+        **best sequence of actions it discovered**". Odkryta sekwencja to
+        sciezka od korzenia do wezla, a "najlepsza" mierzymy uzytecznoscia
+        persony na stanie tego wezla - ta sama funkcja, ktora ocenia stany
+        koncowe symulacji (eq. 2-5).
+
+        Poprzednia wersja schodzila zachlannie po `mean_utility` dziecka i byla
+        zla z dwoch powodow: srednia z jednego szczesliwego rolloutu bije
+        rzetelna srednia z tysiecy symulacji, a marsz urywal sie na pierwszym
+        nierozwinietym wezle. Zmierzone na 250 partiach fallbackowych pelnego
+        przebiegu: 181 z nich odgrywalo DOKLADNIE JEDNA akcje.
+
+        Remisy rozstrzyga krotsza sciezka - zgodnie z duchem eq. 2-5, gdzie
+        kazdy krok jest karany (-0,01*ST).
+        """
+
+        best_node = self.root
+        best_score = utility(persona, self.root.env)
+        best_depth = 0
+        stack: list[tuple[Node, int]] = [(self.root, 0)]
+        while stack:
+            node, depth = stack.pop()
+            score = utility(persona, node.env)
+            if score > best_score or (score == best_score and depth < best_depth):
+                best_node, best_score, best_depth = node, score, depth
+            for child in node.children.values():
+                stack.append((child, depth + 1))
+        return self._path_to(best_node)

@@ -72,12 +72,12 @@ class PublishedFormulaTests(unittest.TestCase):
     def test_runner_formula_degenerates_under_binary_pe(self) -> None:
         """Czlon PE*PE*(PE+1) z eq. (6) jest zerem dla PE w {0, -1}.
 
-        Dotyczy odczytu terminali ze STANU W WEZLE (`terminal_source="node"`).
-        Przy `terminal_source="rollout"` srednia binarnego PE po symulacjach jest
-        ciagla, wiec czlon sie nie zeruje - i ta konfiguracja wypada najlepiej
-        (2/9 wygranych vs 0/9 dla ciaglego PE). Ciagle PE jest gorsze, bo
-        PE^2*(PE+1) jest niemonotoniczne: maksimum wypada w ~2/3 drogi od
-        wyjscia, wiec formula nagradza bledzenie.
+        Dotyczy SUROWEJ wartosci terminala. W drzewie zmienne Tabeli I sa
+        srednia po stanach koncowych symulacji (sekcja V-A artykulu), a srednia
+        binarnego PE jest ciagla, wiec czlon sie nie zeruje - i ta konfiguracja
+        wypada najlepiej (2/9 wygranych vs 0/9 dla ciaglego PE). Ciagle PE jest
+        gorsze, bo PE^2*(PE+1) jest niemonotoniczne: maksimum wypada w ~2/3
+        drogi od wyjscia, wiec formula nagradza bledzenie.
         """
 
         score = compile_expression(parse(self.formulas["runner"]))

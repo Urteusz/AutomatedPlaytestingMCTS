@@ -36,7 +36,6 @@ ALLOWED_MAP_SYMBOLS = {WALL, EMPTY, ENTRANCE, *OBJECT_BY_SYMBOL, *NPC_KIND_BY_SY
 DIRECTION_DELTA = {"N": (-1, 0), "E": (0, 1), "S": (1, 0), "W": (0, -1)}
 
 LOS_GEOMETRIES = frozenset({"axis4", "axis8", "raycast"})
-LOS_CORNER_RULES = frozenset({"transparent", "permissive", "strict"})
 LOS_DISTANCE_METRICS = frozenset({"chebyshev", "manhattan"})
 
 
@@ -128,6 +127,26 @@ class MiniDungeon:
         self.portal_links = self._load_portal_links(portal_pairs_path, portal_pairs)
         self.exit_distances = self._compute_exit_distances()
         self._exit_distance_span = max(self.exit_distances.values(), default=0)
+        # mianownik PE manhattan; teren jest niemutowalny, wiec liczymy raz
+        self._manhattan_span = max(
+            (
+                abs(row - self.exit[0]) + abs(column - self.exit[1])
+                for row in range(self.height)
+                for column in range(self.width)
+                if self.terrain[row][column] != WALL
+            ),
+            default=0,
+        )
+        # mianownik PE manhattan; teren jest niemutowalny, wiec liczymy raz
+        self._manhattan_span = max(
+            (
+                abs(row - self.exit[0]) + abs(column - self.exit[1])
+                for row in range(self.height)
+                for column in range(self.width)
+                if self.terrain[row][column] != WALL
+            ),
+            default=0,
+        )
         self.reset()
 
     def _load_blueprint(self) -> None:
@@ -299,12 +318,86 @@ class MiniDungeon:
 
         return 0.0 if self.hero_position == self.exit else -1.0
 
+    def normalized_proximity_to_exit(self) -> float:
+        """PE ciagle w [0, 1]: **1 na wyjsciu**, 0 na najdalszym kaflu mapy.
+
+        Konwencja odzyskana z kodu wspolautora artykulu
+        (MasterMilkX/minidungeons-3d, `SimUtilityCalculator`):
+        `1 - (L - Lmin)/(Lmax - Lmin)`, gdzie L to dlugosc sciezki A*.
+        Potwierdzona niezaleznie od tego kodu dwoma wlasnosciami eq. (6):
+
+        * czlon `PE^2*(PE+1)` jest na [0,1] **scisle rosnacy** (f' = PE*(3PE+2)),
+          z maksimum dokladnie na wyjsciu - co zgadza sie z opisem w artykule
+          ("strongly prioritizes the proximity to the exit variable");
+        * `R_bar*(1-HL)` daje przy PE >= 0 dodatnie R_bar blisko wyjscia, wiec
+          niskie HL podnosi wynik - zgodnie z "actively prefers reaching the
+          exit with low health". Przy PE <= 0 oba te opisy sa falszywe.
+
+        Portale sa krawedziami o koszcie 0 (patrz `_compute_exit_distances`).
+        Pathfinder autorow ich nie zna - to jego blad, nie konwencja: `SimPortal`
+        ma `OtherPortalPoint`, a `SpatialAStar.StoreNeighborNodes` generuje tylko
+        cztery sasiedztwa kardynalne. Roznica jest zmierzona i raportowana.
+        """
+
+        distance = self.exit_distances.get(self.hero_position)
+        if distance is None:  # kafel odciety od wyjscia - najgorsza wartosc
+            return 0.0
+        if not self._exit_distance_span:
+            return 1.0
+        return 1.0 - distance / self._exit_distance_span
+
+    def manhattan_proximity_to_exit(self) -> float:
+        """PE ciagle w [0, 1] **bez wiedzy o scianach**: 1 na wyjsciu.
+
+        `1 - manhattan(kafel, wyjscie) / maks`, czyli sygnal "cieplo/zimno" w
+        przestrzeni. Rozni sie od `normalized_proximity_to_exit` tym, ze NIE
+        rozwiazuje szukania drogi: tam agent dostaje dlugosc najkrotszej trasy
+        (oracle), tu tylko bliskosc w linii prostej, ktora przy scianie klamie -
+        zmierzone najgorsze przypadki: map07 6 kafli prostych wobec 31 krokow
+        realnych (5,2x), map05 2,0x, map02 1,6x.
+
+        Artykul podaje wylacznie nazwe "Proximity to Exit", a proximity jest
+        pojeciem przestrzennym, wiec ten odczyt jest zgodny z litera. Uwaga na
+        dwuznacznosc: autorzy uzywaja manhattanu jako **heurystyki w A***, wiec
+        ich wynik to realna sciezka - czyli `normalized`, nie ten wariant.
+        """
+
+        if not self._manhattan_span:
+            return 1.0
+        row, column = self.hero_position
+        distance = abs(row - self.exit[0]) + abs(column - self.exit[1])
+        return 1.0 - distance / self._manhattan_span
+
+    def manhattan_proximity_to_exit(self) -> float:
+        """PE ciagle w [0, 1] **bez wiedzy o scianach**: 1 na wyjsciu.
+
+        `1 - manhattan(kafel, wyjscie) / maks`, czyli sygnal "cieplo/zimno" w
+        przestrzeni. Rozni sie od `normalized_proximity_to_exit` tym, ze NIE
+        rozwiazuje szukania drogi: tam agent dostaje dlugosc najkrotszej trasy
+        (oracle), tu tylko bliskosc w linii prostej, ktora przy scianie klamie -
+        zmierzone najgorsze przypadki: map07 6 kafli prostych wobec 31 krokow
+        realnych (5,2x), map05 2,0x, map02 1,6x.
+
+        Artykul podaje wylacznie nazwe "Proximity to Exit", a proximity jest
+        pojeciem przestrzennym, wiec ten odczyt jest zgodny z litera. Uwaga na
+        dwuznacznosc: autorzy uzywaja manhattanu jako **heurystyki w A***, wiec
+        ich wynik to realna sciezka - czyli `normalized`, nie ten wariant.
+        """
+
+        if not self._manhattan_span:
+            return 1.0
+        row, column = self.hero_position
+        distance = abs(row - self.exit[0]) + abs(column - self.exit[1])
+        return 1.0 - distance / self._manhattan_span
+
     def graded_proximity_to_exit(self) -> float:
         """PE ciagle w [-1, 0]: 0 na wyjsciu, -1 na najdalszym kaflu mapy.
 
-        Wariant wymagany przez ewoluowane tree policy z arXiv:1802.06881 - przy
-        binarnym PE czlon PE^2*(PE+1) z eq. (6) zeruje sie tozsamosciowo.
-        Utility person nadal korzysta z binarnego `proximity_to_exit`.
+        Wariant **historyczny, kontrolny** - zachowany, bo na nim zmierzono
+        wczesniejsze wyniki. NIE uzywac do odtwarzania eq. (6)-(9): na [-1,0]
+        czlon `PE^2*(PE+1)` jest niemonotoniczny, z maksimum w ~0,7 dystansu od
+        wyjscia (0,147) i zerem zarowno na wyjsciu, jak i najdalej - czyli
+        nagradza bledzenie. Wlasciwa konwencja to `normalized_proximity_to_exit`.
         """
 
         distance = self.exit_distances.get(self.hero_position)
@@ -313,20 +406,6 @@ class MiniDungeon:
         if not self._exit_distance_span:
             return 0.0
         return -distance / self._exit_distance_span
-
-    def short_proximity_to_exit(self, radius: int) -> float:
-        """PE krotkozasiegowe: gradient tylko w promieniu `radius` od wyjscia.
-
-        Poza promieniem -1, czyli tak jak PE binarne - agent nie ma kompasu na
-        skale mapy, wiec win rate baseline'u zostaje na poziomie artykulu
-        (zmierzone: short3 16,7% wobec binary 16,7%), ale wzory eq. 6-9 dostaja
-        niezerowy gradient tam, gdzie wyjscie jest w zasiegu.
-        """
-
-        distance = self.exit_distances.get(self.hero_position)
-        if distance is None or distance >= radius:
-            return -1.0
-        return -distance / radius
 
     def _compute_exit_distances(self) -> dict[Coord, int]:
         """BFS 0-1 od wyjscia; portale sa krawedziami o koszcie 0, bo teleport
@@ -777,11 +856,9 @@ class MiniDungeon:
         regulach, zeby dalo sie porownac warianty na benchmarku."""
 
         self.los_geometry = str(self.rules.value("line_of_sight", "geometry"))
-        self.los_corners = str(self.rules.value("line_of_sight", "corners"))
         self.los_distance_metric = str(self.rules.value("line_of_sight", "distance_metric"))
         for value, allowed, name in (
                 (self.los_geometry, LOS_GEOMETRIES, "geometry"),
-                (self.los_corners, LOS_CORNER_RULES, "corners"),
                 (self.los_distance_metric, LOS_DISTANCE_METRICS, "distance_metric"),
         ):
             if value not in allowed:
@@ -820,9 +897,10 @@ class MiniDungeon:
         DDA na liczbach calkowitych: kolejnosc przejsc przez granice kafli
         porownujemy przez t_wiersz = (2k-1)/(2*span_row) i analogicznie dla
         kolumn, po przemnozeniu na krzyz. Rownosc oznacza, ze promien trafia
-        dokladnie w naroznik czterech kafli - o przejrzystosci decyduje wtedy
-        `los_corners`. Zdarza sie to dla kazdego kierunku, ktorego zredukowana
-        postac ma oba skladniki nieparzyste, nie tylko dla 45 stopni."""
+        dokladnie w naroznik czterech kafli - przechodzi wtedy przez styk, o ile
+        chociaz jeden kafel boczny jest przechodni (`_corner_is_open`). Zdarza
+        sie to dla kazdego kierunku, ktorego zredukowana postac ma oba skladniki
+        nieparzyste, nie tylko dla 45 stopni."""
 
         delta_row, delta_column = end[0] - start[0], end[1] - start[1]
         step_row = (delta_row > 0) - (delta_row < 0)
@@ -859,10 +937,12 @@ class MiniDungeon:
         return True
 
     def _corner_is_open(self, sides: tuple[Coord, Coord]) -> bool:
-        if self.los_corners == "transparent":
-            return True
-        open_sides = [self._is_passable(cell) for cell in sides]
-        return all(open_sides) if self.los_corners == "strict" else any(open_sides)
+        """Promien trafil w styk czterech kafli: blokuja go tylko dwie sciany po
+        obu stronach. Wariant rozstrzygniety w docs/rules/decisions.md - zerowej
+        szerokosci szczelina miedzy dwiema scianami nie przepuszcza wzroku, a
+        musniecie jednego naroznika przy otwartym drugim boku - przepuszcza."""
+
+        return any(self._is_passable(cell) for cell in sides)
 
     def _next_step_bfs(self, start: Coord, goal: Coord, actor_id: int) -> Coord | None:
         actor_kind = self.npcs[actor_id].kind

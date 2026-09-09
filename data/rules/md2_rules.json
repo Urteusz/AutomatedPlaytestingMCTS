@@ -15,7 +15,6 @@
   },
   "line_of_sight": {
     "geometry": "axis8",
-    "corners": "permissive",
     "distance_metric": "chebyshev"
   },
   "javelin": {

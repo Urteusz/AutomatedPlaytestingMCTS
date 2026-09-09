@@ -205,31 +205,52 @@ def from_dict(data: dict[str, object]) -> Expr:
     return BinOp(op, from_dict(data["left"]), from_dict(data["right"]))  # type: ignore[arg-type]
 
 
-PE_MODES = ("binary", "graded")  # plus "shortN", np. "short3"
+PE_MODES = ("binary", "normalized", "manhattan", "graded")
 
 
 def resolve_pe(environment: "MiniDungeon", pe_mode: str) -> float:
     """Wartosc terminala PE w wybranym wariancie.
 
-    binary  - 0 na wyjsciu, -1 wpp (jak utility person)
-    graded  - -dystans_BFS/maks, kompas z calej mapy
-    shortN  - gradient tylko w promieniu N kafli od wyjscia
+    binary      - 0 na wyjsciu, -1 wpp (jak utility person)
+    manhattan   - 1 - dystans_manhattan/maks, **1 na wyjsciu**, ale BEZ wiedzy
+                  o scianach: kierunek bez rozwiazanej trasy
+    manhattan   - 1 - dystans_manhattan/maks, **1 na wyjsciu**, ale BEZ wiedzy
+                  o scianach: kierunek bez rozwiazanej trasy
+    normalized  - 1 - dystans/maks, czyli **1 na wyjsciu**; konwencja autorow,
+                  jedyna, w ktorej eq. (6)-(9) zachowuja sie tak, jak artykul je
+                  opisuje (patrz `engine.normalized_proximity_to_exit`)
+    graded      - -dystans/maks, wariant historyczny; lamie monotonicznosc eq. (6)
     """
 
     if pe_mode == "binary":
         return environment.proximity_to_exit()
+    if pe_mode == "normalized":
+        return environment.normalized_proximity_to_exit()
+    if pe_mode == "manhattan":
+        return environment.manhattan_proximity_to_exit()
+    if pe_mode == "manhattan":
+        return environment.manhattan_proximity_to_exit()
     if pe_mode == "graded":
         return environment.graded_proximity_to_exit()
-    if pe_mode.startswith("short"):
-        return environment.short_proximity_to_exit(int(pe_mode[5:]))
-    raise ValueError(f"Nieznany pe_mode {pe_mode!r}; oczekiwano {PE_MODES} albo 'shortN'")
+    raise ValueError(f"Nieznany pe_mode {pe_mode!r}; oczekiwano {PE_MODES}")
 
 
 def terminal_values(environment: "MiniDungeon", *, pe_mode: str = "binary") -> tuple[float, ...]:
-    """Zmienne Tabeli I dla stanu w wezle, w kolejnosci TERMINAL_ORDER."""
+    """Zmienne Tabeli I dla stanu w wezle, w kolejnosci TERMINAL_ORDER.
+
+    `HL` jest **znormalizowane do [0,1]** (HP / maks HP). Przypis pod Tabela I
+    wymienia jako stosunki tylko PD, MS, TO i IC, ale kod autorow liczy
+    `result._healthLeft = (double)level.SimHero.Health/10d`, a bez tego eq. (6)
+    sie rozjezdza: przy surowym HP czlon `R_bar*(1-HL)` ma przy pelnym zdrowiu
+    mnoznik -9 i przy typowych wartosciach przewaza czlon bliskosci wyjscia,
+    ktory artykul nazywa glownym. Metryka `health_left` w raportach zostaje
+    surowa - normalizujemy wylacznie zmienna drzewa.
+    """
 
     metrics = environment.metric_values()
     values = [float(metrics[METRIC_KEYS[name]]) for name in TERMINAL_ORDER]
     if pe_mode != "binary":
         values[TERMINAL_ORDER.index("PE")] = resolve_pe(environment, pe_mode)
+    max_hp = float(getattr(environment, "PLAYER_MAX_HP", 10) or 10)
+    values[TERMINAL_ORDER.index("HL")] /= max_hp
     return tuple(values)

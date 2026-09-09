@@ -36,7 +36,7 @@ rekonstrukcyjne odpowiadają oryginalnemu kodowi autorów.
 | Id | Status w źródłach | Decyzja v1 | Powód |
 | --- | --- | --- | --- |
 | `hero_start_hp` | konflikt | 10 HP | Opis MD2 dopuszcza 1–10 HP; reprodukowany eksperyment MCTS startuje jawnie z 10 HP. |
-| `line_of_sight_geometry` | nieokreślone; osie **refutowane** obrazkiem | cztery osie **oraz** dokładne skosy 45° (`line_of_sight.geometry: "axis8"`), narożnik blokuje, gdy oba kafle boczne są ścianami (`corners: "permissive"`), blokują wyłącznie ściany; przełączniki zostawione na `axis4`/`raycast` i `transparent`/`strict` | Publikacje wymagają „unbroken line of sight" i nie definiują ani geometrii, ani blokerów. **Osie są wykluczone**: na prawym panelu MD2 Fig. 1 (po 3 turach) ogr opuszcza `(12,2)`, zjada skarb z `(13,1)` i staje na `(14,1)`, a osiowo widzi z `(12,2)` tylko `(12,1)` i `(13,2)`, do których bohater nie dojdzie w 3 turach — więc nie mógłby się ruszyć. Wyboru **spośród wariantów skośnych Fig. 1 nie rozstrzyga** (wszystkie dają ten sam prawy panel), a liczba 118 rzutów z MD2 §Complexity nie jest odtwarzana przez żaden z 21 dokładnie policzonych wariantów (osie 70, `axis8` 95, raycast 143). `axis8` wybrane jako minimalne rozszerzenie zgodne z Fig. 1, z całkowitą liczbą kafli na każdym promieniu (czyli jednoznacznym „within 5 tiles") i zaniżonym, nie zawyżonym branchingiem (3,19 vs 3,41). `permissive` zamiast `transparent`, bo `transparent` przepuszczał wzrok **przez punkt styku dwóch ścian** — na `map02` ogr z `(13,1)` widział skarb `(10,4)` przez zerowej szerokości szczelinę między `(11,2)` i `(12,3)` i szedł w bok zamiast na bohatera. `strict` odrzucone, bo blokuje też muśnięcie pojedynczego narożnika przy otwartym drugim boku i zmienia panel Fig. 1 (goblin `[12, 5]` przestaje się ruszać). Test: `test_sight_does_not_squeeze_between_two_wall_corners_on_map02`. |
+| `line_of_sight_geometry` | nieokreślone; osie **refutowane** obrazkiem | cztery osie **oraz** dokładne skosy 45° (`line_of_sight.geometry: "axis8"`), narożnik blokuje, gdy oba kafle boczne są ścianami (`_corner_is_open`, reguła stała — bez przełącznika), blokują wyłącznie ściany; przełącznik zostawiony na `axis4`/`raycast` | Publikacje wymagają „unbroken line of sight" i nie definiują ani geometrii, ani blokerów. **Osie są wykluczone**: na prawym panelu MD2 Fig. 1 (po 3 turach) ogr opuszcza `(12,2)`, zjada skarb z `(13,1)` i staje na `(14,1)`, a osiowo widzi z `(12,2)` tylko `(12,1)` i `(13,2)`, do których bohater nie dojdzie w 3 turach — więc nie mógłby się ruszyć. Wyboru **spośród wariantów skośnych Fig. 1 nie rozstrzyga** (wszystkie dają ten sam prawy panel), a liczba 118 rzutów z MD2 §Complexity nie jest odtwarzana przez żaden z 21 dokładnie policzonych wariantów (osie 70, `axis8` 95, raycast 143). `axis8` wybrane jako minimalne rozszerzenie zgodne z Fig. 1, z całkowitą liczbą kafli na każdym promieniu (czyli jednoznacznym „within 5 tiles") i zaniżonym, nie zawyżonym branchingiem (3,19 vs 3,41). Reguła narożników **nie jest konfigurowalna** — oba pozostałe warianty refutuje Fig. 1, więc `corners` usunięto z reguł i z kodu (2026-09-08). `transparent` przepuszczał wzrok **przez punkt styku dwóch ścian** — na `map02` ogr z `(13,1)` widział skarb `(10,4)` przez zerowej szerokości szczelinę między `(11,2)` i `(12,3)` i szedł w bok zamiast na bohatera. `strict` blokuje też muśnięcie pojedynczego narożnika przy otwartym drugim boku i zmienia panel Fig. 1 (goblin `[12, 5]` przestaje się ruszać). Zostaje jedyny wariant zgodny z rysunkiem: blokują dopiero dwie ściany po obu stronach styku. Test: `test_sight_does_not_squeeze_between_two_wall_corners_on_map02`. |
 | `los_distance_metric` | nieokreślone | `chebyshev` (długość promienia w kaflach) | Przy skosach „closest" i „within 5 tiles" przestają być jednoznaczne. Chebyshev = liczba kafli wzdłuż promienia, więc jest spójny z geometrią LOS i przy `axis4` sprowadza się do starego dystansu osiowego. Alternatywa `manhattan` (realny koszt przejścia po siatce 4-spójnej) jest w regułach; liczba 118 na nią nie wpływa, bo oszczep nie ma limitu zasięgu. |
 | `equal_path_tie_break` | nieokreślone | kolejność sąsiadów N, E, S, W | Deterministyczny silnik i powtarzalny MCTS wymagają stałego tie-breaka. |
 | `target_tie_break` | częściowo wymuszone | klucz sortowania `(dystans, obiekt przed bohaterem, wiersz, kolumna)` | MD2: przy równym dystansie Blob i Ogre wybierają obiekt przed bohaterem (cytat dosłowny); dalszy remis (wiersz, kolumna) jest arbitralny. |
@@ -74,10 +74,9 @@ co optymalizuje, to nie ruszać się. Completionist ma `0,7·IC`, gęsty sygnał
 zbierania obiektów, a wyjście trafia po drodze — stąd odwrócenie kolejności.
 
 `binary` jest jedyną implementacją `PE` **w funkcjach użyteczności person**
-(`personas.py`), czyli tam, gdzie ta kalibracja obowiązuje. `graded` i `shortN`
-zostały w silniku (`engine.graded_proximity_to_exit`,
-`engine.short_proximity_to_exit`) i są wybieralne **wyłącznie jako terminal
-`PE` ewoluowanej tree policy** (`expression.resolve_pe`, pole `pe_mode`
+(`personas.py`), czyli tam, gdzie ta kalibracja obowiązuje. `graded` został
+w silniku (`engine.graded_proximity_to_exit`) i jest wybieralny **wyłącznie jako
+terminal `PE` ewoluowanej tree policy** (`expression.resolve_pe`, pole `pe_mode`
 w `data/rules/*_policies.json`). UCB1 w ogóle nie czyta terminali Tabeli I, więc
 baseline pozostaje nienaruszony niezależnie od tego ustawienia.
 
@@ -87,12 +86,84 @@ dla drzew równań, osobno od użyteczności Eq. 2–5. Dodatkowo eq. (6) zawier
 `t_R(PE=0) = t_R(PE=−1) = 9,6300`. GP nie wyewoluowałoby wyrażenia, w którym 60%
 drzewa jest stałą, więc oryginalne `PE` w tree policy było najpewniej ciągłe.
 
+## Protokół ewolucji tree policy
+
+Artykuł opisuje ewolucję w sekcjach V-B i VI-A, ale trzy rzeczy przemilcza.
+Rozstrzygnięcia są zaimplementowane w `domain/gp_fitness.py` i `cli/evolve.py`:
+
+| Sprawa | Artykuł | Nasze rozstrzygnięcie |
+| --- | --- | --- |
+| Budżet partii przy liczeniu fitnessu | „maximum allocated time" | **budżet iteracyjny** (`--iterations`, domyślnie 2000). Fitness liczony na czasie nie jest odtwarzalny: ta sama populacja dałaby inny wynik przy innym obciążeniu maszyny. |
+| Liczba partii na mapę | nie podaje | **jedna, ze stałym seedem** (`--seeds-per-map`). Silnik jest deterministyczny, więc para (mapa, seed) wyznacza wynik chromosomu jednoznacznie — dzięki temu ocena elity cache'uje się między generacjami. |
+| Zachowanie po przerwaniu | nie dotyczy | wznawianie na poziomie **uruchomienia** (persona × run); przerwane uruchomienie liczy się od pierwszej generacji. |
+
+Fitness jest wprost z artykułu: `f = U` persony policzone **na koniec partii**
+(sekcja VI-A: „Each persona uses the same fitness as the utility score"),
+uśrednione po sześciu mapach treningowych (1, 2, 3, 4, 7, 10). Wybór zwycięskiego
+uruchomienia spośród trzech idzie **po głównej metryce persony**, nie po
+fitnessie — też za artykułem („based on the persona's core priority"). Dla Runnera
+przyjmujemy jako priorytet dojście do wyjścia (`reached_exit`), bo jako jedyny nie
+ma metryki zbierania.
+
+`pe_mode` własnej ewolucji ustawiamy na `graded`, i to jest **caveat do
+zaraportowania**, nie neutralny szczegół. Pomiar na formule demonstracyjnej
+(runner, map08/map01/map11 × 3 seedy, 4000 iteracji): `graded` daje 9/9 wygranych
+wobec 3/9 baseline'u UCB1 i 0/9 dla eq. (6), ale ta sama formuła przy `binary`
+spada do 4/9. Większość przewagi bierze się więc z ciągłego kompasu do wyjścia
+w terminalu `PE`, a nie z samego kształtu wyewoluowanego wyrażenia. Użyteczności
+person to nie dotyka — tam `PE` zostaje binarne, więc kalibracja baseline'u wyżej
+jest nienaruszona.
+
+Wynik uboczny tamtego demo, wart odnotowania w pracy: najlepsza formuła miała
+postać `(PE − c) − c`, czyli była **efektywnie czystym `PE`** — stała dodaje się
+do każdego dziecka jednakowo, więc nie zmienia `argmax`. Ten sam artefakt
+odnotowali autorzy w eq. (8): „an added 0.19 constant which obviously does not
+affect the tree policy".
+
 Otwarta uwaga mechanizmowa, nie powód do zmiany: `c = √2` w UCB1 wymaga
 nagrody ograniczonej do `[0,1]` (MCTS §III-A, cytat dosłowny), a baseline
 propaguje surową użyteczność persony — ujemną, do −6 z karą śmierci. To może
 współtłumaczyć niski win rate baseline'u niezależnie od `PE`. Do
 zweryfikowania: **Test 3** — przeliczyć baseline z użytecznością
 znormalizowaną do `[0,1]` przy `c = √2`.
+
+## Sekwencja odgrywana po wyczerpaniu budżetu
+
+Protokół jest **dosłownie z artykułu**, sekcja V: „Because MiniDungeons 2 is
+fully deterministic, each persona only builds **one tree per map**. It will
+immediately cease construction once a winning terminal state is discovered, or
+it reaches timeout, wherein it will take the **best sequence of actions it
+discovered**. On average, trees will contain between two and five million
+nodes." Przeplanowanie MCTS po każdym ruchu (`search()`) byłoby więc
+**odejściem** od artykułu, nie zbliżeniem — mimo że jest to standardowy tryb
+pracy MCTS. Hipoteza postawiona i odrzucona 2026-09-08 przed uruchomieniem.
+
+Z tego zapisu wynika własność, którą trzeba mieć na uwadze przy czytaniu każdej
+tabeli: wygranę zgłasza wyłącznie `_build_tree`, gdy w drzewie powstanie węzeł
+`reached_exit`, a `play_single_tree` odgrywa zwróconą sekwencję i kończy partię.
+**Sekwencja awaryjna nie może wygrać z definicji konstrukcji**, czyli
+`win rate = P(drzewo dotknęło wyjścia w budżecie)`. Zmierzone na pełnym
+przebiegu 440 partii: liczba przegranych równa się liczbie partii z
+`from_tree=False` co do sztuki, a wszystkie wyczerpały pełny budżet.
+
+Artykuł nie mówi, co znaczy „best". Nasze rozstrzygnięcie
+(`_best_discovered_sequence`): ścieżka od korzenia do węzła o **najwyższej
+użyteczności persony policzonej na stanie tego węzła** — tej samej funkcji
+eq. 2–5, która ocenia stany końcowe symulacji; remisy na korzyść krótszej
+ścieżki, bo eq. 2–5 karzą każdy krok.
+
+Poprzednia wersja schodziła zachłannie po `mean_utility` **dziecka** i to był
+defekt: węzeł odwiedzony raz, z jednym szczęśliwym rolloutem, bije węzeł
+odwiedzony 5000 razy, a taki węzeł jest liściem, więc marsz urywał się od razu.
+Zmierzone na 250 partiach awaryjnych: **181 odgrywało dokładnie 1 akcję**.
+Efekt poprawki na `map02` przy 20 tys. iteracji (seedy 0–2): Treasure Collector
+skarby **0% → 46,7%** (artykuł 35%), obiekty **0% → 32,1%** (artykuł 41%),
+kroki 1 → 287. Win rate bez zmian, zgodnie z konstrukcją powyżej.
+
+Skutek uboczny: Runner z binarnym `PE` w użyteczności nie zyskuje niczego poza
+samym wyjściem, więc gdy drzewo wyjścia nie znajdzie, jego najlepszą odkrytą
+sekwencją jest **pusta** — agent stoi. To jest dokładnie „get blocked from
+taking a decision" z artykułu i zgadza się z kalibracją wyżej.
 
 ## Świadomie otwarte
 

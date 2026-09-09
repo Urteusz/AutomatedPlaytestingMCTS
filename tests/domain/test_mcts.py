@@ -122,12 +122,14 @@ class MctsPhaseTests(unittest.TestCase):
             sum(node.visits for node in child.children.values()) + 1,
         )
 
-    def test_single_tree_falls_back_to_greedy_sequence_on_timeout(self) -> None:
+    def test_single_tree_falls_back_to_best_discovered_sequence_on_timeout(self) -> None:
         """Bez terminalnego wezla z wyjsciem szukanie nie moze zglosic wygranej.
 
         Rollout zwraca tylko utility, wiec zwyciestwo napotkane w losowej
-        symulacji nie staje sie sekwencja do odegrania - zostaje sciezka
-        zachlanna po najwyzszej sredniej utility.
+        symulacji nie staje sie sekwencja do odegrania - zostaje "best sequence
+        of actions it discovered" (sekcja V artykulu). Runner z binarnym PE nie
+        zyskuje niczym poza wyjsciem, a kazdy krok kosztuje 0,01, wiec
+        najlepszym odkrytym stanem jest sam korzen: agent stoi.
         """
 
         map_path = self.make_map("#####", "#E.X#", "#####")
@@ -144,7 +146,27 @@ class MctsPhaseTests(unittest.TestCase):
 
         self.assertEqual(1, result["iterations"])
         self.assertFalse(result["reached_exit"])
-        self.assertEqual(1, result["steps"])
+        self.assertEqual(0, result["steps"])
+
+    def test_best_discovered_sequence_reaches_a_deep_high_utility_node(self) -> None:
+        """Regresja na defekt zmierzony w pelnym przebiegu: zejscie zachlanne po
+        `mean_utility` dziecka trafialo w wezel z jednym szczesliwym rolloutem i
+        urywalo sie na nim, wiec 181 z 250 partii fallbackowych odgrywalo jedna
+        akcje. Teraz liczy sie uzytecznosc STANU wezla, wiec Treasure Collector
+        idzie po skarb lezacy trzy kroki dalej, nawet gdy pierwszy krok wyglada
+        w statystykach slabo.
+        """
+
+        # wyjscie zamurowane, wiec wygrana jest niemozliwa i partia MUSI przejsc
+        # przez sekwencje awaryjna - inaczej test mierzylby zwykla wygrana
+        map_path = self.make_map("#######", "#E..r#X", "#######")
+        agent = MonteCarloTreeSearch(map_path)
+        result = agent.play_single_tree("treasure_collector", time_limit_s=None,
+                                        max_iterations=400, seed=0)
+
+        self.assertFalse(result["reached_exit"])
+        self.assertEqual(1.0, result["treasure_ratio"])  # skarb zabrany
+        self.assertGreaterEqual(result["steps"], 3)
 
     def test_single_tree_stops_for_explicit_winning_tree_node(self) -> None:
         map_path = self.make_map("####", "#EX#", "####")
@@ -263,27 +285,26 @@ class TreeSpecTests(unittest.TestCase):
         agent = MonteCarloTreeSearch(self.map_path, policy=UCB1Policy())
 
         self.assertFalse(agent.spec.collect_terminals)
-        self.assertIsNone(agent.root.terminals)
         self.assertIsNone(agent.root.terminal_sums)
 
     def test_evolved_policy_requirements_reach_the_nodes(self) -> None:
-        policy = EvolvedPolicy("PE + Rbar", pe_mode="graded", terminal_source="rollout")
+        policy = EvolvedPolicy("PE + Rbar", pe_mode="graded")
         agent = MonteCarloTreeSearch(self.map_path, policy=policy)
 
         self.assertEqual(
-            TreeSpec(collect_terminals=True, pe_mode="graded", terminal_source="rollout"),
+            TreeSpec(collect_terminals=True, pe_mode="graded"),
             agent.spec,
         )
-        self.assertIsNotNone(agent.root.terminals)
+        self.assertIsNotNone(agent.root.terminal_sums)
 
     def test_children_inherit_the_spec_of_their_parent(self) -> None:
-        spec = TreeSpec(collect_terminals=True, pe_mode="graded", terminal_source="rollout")
+        spec = TreeSpec(collect_terminals=True, pe_mode="graded")
         parent = Node(MiniDungeon(self.map_path), None, None, spec)
 
         child = parent.expand(random.Random(0))
 
         self.assertIs(spec, child.spec)
-        self.assertIsNotNone(child.terminals)
+        self.assertIsNotNone(child.terminal_sums)
 
 
 if __name__ == "__main__":

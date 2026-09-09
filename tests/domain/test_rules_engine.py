@@ -282,8 +282,8 @@ class RulesEngineTests(unittest.TestCase):
     def test_map02_javelin_target_count_stays_below_the_published_118(self):
         """MD2 Fig. 1 reports 118 javelin actions across the 105 tiles
         (branching 3.41 = (240+118)/105). No line of sight variant we tested
-        reproduces 118: axis4 gives 70, the shipped axis8 with permissive
-        corners 95, an unrestricted raycast 143. This test pins our number so
+        reproduces 118: axis4 gives 70, the shipped axis8 95, an unrestricted
+        raycast 143. This test pins our number so
         the gap stays visible instead of drifting silently - see
         `line_of_sight_geometry` in docs/rules/decisions.md."""
 
@@ -301,19 +301,14 @@ class RulesEngineTests(unittest.TestCase):
     def test_sight_does_not_squeeze_between_two_wall_corners_on_map02(self):
         """Regression for a real case spotted in the GUI: from (13, 1) the ray
         to the treasure at (10, 4) crosses the exact point where the corners of
-        the walls (11, 2) and (12, 3) touch. With `corners: transparent` the
-        ogre saw the treasure through a zero-width gap and walked sideways
-        instead of at the hero."""
+        the walls (11, 2) and (12, 3) touch. Letting sight through that
+        zero-width gap made the ogre walk sideways instead of at the hero."""
 
         env = MiniDungeon(MAP_DIR / "map02.txt")
         self.assertEqual("#", env.terrain[11][2])
         self.assertEqual("#", env.terrain[12][3])
         self.assertEqual("treasure", env.objects[(10, 4)])
         self.assertFalse(env.has_line_of_sight((13, 1), (10, 4)))
-
-        leaky = MiniDungeon(MAP_DIR / "map02.txt",
-                            rules_path=self.make_rules({"corners": "transparent"}))
-        self.assertTrue(leaky.has_line_of_sight((13, 1), (10, 4)))
 
     def test_ogre_prefers_the_hero_once_the_leaking_treasure_is_gone(self):
         """Same two north moves, then a throw: the hero does not move, so ogre
@@ -394,26 +389,22 @@ class RulesEngineTests(unittest.TestCase):
                 self.assertEqual(geometry != "axis4", ogre.fancy)
                 self.assertEqual(geometry == "axis4", (2, 1) in env.objects)
 
-    def test_corner_rules_decide_diagonal_sight_past_a_wall(self):
+    def test_only_two_walls_at_a_corner_block_diagonal_sight(self):
         """A 45 degree ray from (1, 1) to (3, 3) crosses the corner of four
-        tiles twice; its sides at the first crossing are (1, 2) and (2, 1)."""
+        tiles twice; its sides at the first crossing are (1, 2) and (2, 1).
+        Sight passes while at least one of them is floor and stops once both
+        are walls - the single rule left after `transparent` and `strict` were
+        refuted by MD2 Fig. 1, see docs/rules/decisions.md."""
 
-        open_row, one_side, both_sides = "#g.E#", "#g#E#", "#g#E#"
-        for corners, rows, visible in (
-                ("transparent", (open_row, "#...#"), True),
-                ("permissive", (open_row, "#...#"), True),
-                ("strict", (open_row, "#...#"), True),
-                ("transparent", (one_side, "#...#"), True),
-                ("permissive", (one_side, "#...#"), True),
-                ("strict", (one_side, "#...#"), False),
-                ("transparent", (both_sides, "##..#"), True),
-                ("permissive", (both_sides, "##..#"), False),
-                ("strict", (both_sides, "##..#"), False),
+        for rows, visible in (
+                (("#g.E#", "#...#"), True),   # both corner sides open
+                (("#g#E#", "#...#"), True),   # one side walled, sight brushes past
+                (("#g#E#", "##..#"), False),  # both sides walled, zero-width gap
         ):
-            with self.subTest(corners=corners, rows=rows):
+            with self.subTest(rows=rows):
                 env = self.make_env(
                     "#####", rows[0], rows[1], "#..X#", "#####",
-                    line_of_sight={"geometry": "axis8", "corners": corners},
+                    line_of_sight={"geometry": "axis8"},
                 )
                 self.assertEqual(visible, env.has_line_of_sight((1, 1), (3, 3)))
 
@@ -424,19 +415,15 @@ class RulesEngineTests(unittest.TestCase):
         sampling-based prototype miscount, hence the explicit case."""
 
         rows = ("#####", "#g..#", "#.#.#", "##..#", "#Er.#", "#..X#", "#####")
-        for corners, visible in (("transparent", True), ("permissive", False), ("strict", False)):
-            with self.subTest(corners=corners):
-                env = self.make_env(
-                    *rows, line_of_sight={"geometry": "raycast", "corners": corners}
-                )
-                self.assertEqual("#", env.terrain[2][2])  # one corner side
-                self.assertEqual("#", env.terrain[3][1])  # the other corner side
-                self.assertEqual(".", env.terrain[2][1])  # tile the ray really crosses
-                self.assertEqual(".", env.terrain[3][2])  # tile the ray really crosses
-                self.assertEqual(visible, env.has_line_of_sight((1, 1), (4, 2)))
-                # ta sama para pod axis8 jest niewidoczna bez wzgledu na narozniki
-                axis8 = self.make_env(*rows, line_of_sight={"geometry": "axis8", "corners": corners})
-                self.assertFalse(axis8.has_line_of_sight((1, 1), (4, 2)))
+        env = self.make_env(*rows, line_of_sight={"geometry": "raycast"})
+        self.assertEqual("#", env.terrain[2][2])  # one corner side
+        self.assertEqual("#", env.terrain[3][1])  # the other corner side
+        self.assertEqual(".", env.terrain[2][1])  # tile the ray really crosses
+        self.assertEqual(".", env.terrain[3][2])  # tile the ray really crosses
+        self.assertFalse(env.has_line_of_sight((1, 1), (4, 2)))
+        # ta sama para pod axis8 jest niewidoczna juz z powodu geometrii
+        axis8 = self.make_env(*rows, line_of_sight={"geometry": "axis8"})
+        self.assertFalse(axis8.has_line_of_sight((1, 1), (4, 2)))
 
     def test_unknown_line_of_sight_rule_is_rejected(self):
         with self.assertRaises(ValueError):
