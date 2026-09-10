@@ -28,7 +28,7 @@ import time
 from typing import Any, Callable, Sequence
 
 from minidungeons.domain.evolution import GenerationStats, evolve
-from minidungeons.domain.expression import Expr, size, to_infix
+from minidungeons.domain.expression import PE_MODES, Expr, size, to_infix
 from minidungeons.domain.gp_fitness import (
     CORE_METRIC,
     TRAINING_MAP_NAMES,
@@ -338,7 +338,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--maps", nargs="*", default=list(TRAINING_MAP_NAMES),
         help="mapy treningowe; domyslnie 6 map z sekcji VI-A",
     )
-    parser.add_argument("--pe-mode", default="graded", help="terminal PE tree policy: binary | graded")
+    parser.add_argument(
+        "--pe-mode", choices=PE_MODES, default="manhattan",
+        help="terminal PE tree policy; MUSI byc taki sam jak w przebiegu oceniajacym",
+    )
     parser.add_argument("--seed", type=int, default=0, help="seed GP dla uruchomienia 0; kolejne dostaja +1")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--log", type=Path, default=DEFAULT_LOG, help="dziennik generacji (CSV, krzywe fitnessu)")

@@ -9,9 +9,9 @@
     "treasure_collector": "(((IC + (IC / HL)) * (((((IC + (IC / 0.0744)) / 0.0744) + ((IC + (IC / 0.0744)) / (IC / 0.0744))) * HL) - (MS + HL))) - HL)"
   },
   "notes": {
-    "completionist": "run 0 z 1, seed 0, fitness 0.594521, interactive_ratio=0.573405 na mapach treningowych",
-    "monster_killer": "run 0 z 1, seed 0, fitness 0.685593, monster_ratio=0.63952 na mapach treningowych",
-    "runner": "run 0 z 1, seed 0, fitness 0.691019, reached_exit=0.666667 na mapach treningowych",
-    "treasure_collector": "run 0 z 1, seed 0, fitness 0.583284, treasure_ratio=0.55 na mapach treningowych"
+    "completionist": "run 0 z 3, seed 0, fitness 0.594521, interactive_ratio=0.573405 na mapach treningowych",
+    "monster_killer": "run 0 z 3, seed 0, fitness 0.685593, monster_ratio=0.63952 na mapach treningowych",
+    "runner": "run 0 z 3, seed 0, fitness 0.691019, reached_exit=0.666667 na mapach treningowych",
+    "treasure_collector": "run 0 z 3, seed 0, fitness 0.583284, treasure_ratio=0.55 na mapach treningowych"
   }
 }

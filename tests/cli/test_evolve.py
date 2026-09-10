@@ -174,7 +174,9 @@ class EvolveCliTests(unittest.TestCase):
         self.run_cli("--promote")
         promoted = json.loads(self.policies.read_text(encoding="utf-8"))
         self.assertEqual(promoted["policies"]["runner"], entry["formula"])
-        self.assertEqual(promoted["pe_mode"], "graded")
+        # domyslny pe_mode MUSI byc konwencja ramienia oceniajacego - inaczej GP
+        # optymalizuje inna funkcje celu niz raportuje Tabela II
+        self.assertEqual(promoted["pe_mode"], "manhattan")
         parse(promoted["policies"]["runner"])  # formula musi byc czytelna dla EvolvedPolicy
 
     def test_restart_discards_previous_runs(self) -> None:

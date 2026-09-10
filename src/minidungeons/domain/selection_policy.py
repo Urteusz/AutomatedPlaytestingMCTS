@@ -21,7 +21,8 @@ class SelectionPolicy(ABC):
 
     * `needs_terminals`  - czy wezly maja liczyc zmienne Tabeli I (UCB1: nie,
       wiec nie placi za nie ani czasem, ani pamiecia);
-    * `pe_mode`          - wariant terminala PE ("binary" albo "graded", patrz
+    * `pe_mode`          - wariant terminala PE (jeden z `expression.PE_MODES`:
+      "binary", "normalized", "manhattan", "graded" - patrz
       `expression.resolve_pe`). Dotyczy WYLACZNIE tree policy - utility person
       zostaje binarne (docs/rules/decisions.md).
 
