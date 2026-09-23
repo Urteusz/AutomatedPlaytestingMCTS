@@ -11,3 +11,6 @@ dist/
 data/results
 archive/
 scratchpad
+*.md
+!README.md
+native/
