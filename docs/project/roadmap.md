@@ -55,8 +55,8 @@ Podział źródeł i reguła rozstrzygania konfliktów:
   startowe HP bohatera to 10, mimo że opis MD2 podaje zakres 1–10.
 
 Oryginalne pliki map są niedostępne — mapy odtworzono z Fig. 2 i obrazów
-źródłowych. W pracy trzeba jawnie napisać, że użyto rekonstrukcji, i **nie
-obiecywać liczb identycznych z artykułem**. Porównania algorytmów są ważne
+źródłowych. W pracy trzeba jawnie napisać, że użyto rekonstrukcji, i nie
+obiecywać liczb identycznych z artykułem. Porównania algorytmów są ważne
 w ramach tej samej lokalnej implementacji. Rejestr niepewności:
 `docs/benchmark.md`.
 
@@ -85,15 +85,15 @@ czy agent uczący się przez wzmocnienie odtworzy te same style.
 
 | Zakres | Stan |
 | --- | --- |
-| Benchmark 11 map, zamrożony i zwalidowany | **gotowe** (`md2-reconstructed-v1`, 2026-07-19) |
-| Deterministyczny, klonowalny silnik MD2 | **gotowe** (`domain/engine.py`) |
-| Reguły i decyzje rekonstrukcyjne spisane | **gotowe** (`docs/rules/`) |
-| Cztery persony i funkcje użyteczności | **gotowe** (`domain/personas.py`) |
-| Agent losowy jako punkt odniesienia | **gotowe** (`cli/random_agent.py`) |
-| MCTS-UCB1, jedno drzewo na mapę | **gotowe** (`domain/mcts.py`) |
-| Eksperyment wznawialny + raport Tabeli II | **gotowe** (`cli/mcts_experiment.py`) |
-| Przeliczenie baseline UCB1 na pełnym zakresie | **do zrobienia** — `data/results/` jest pusty |
-| MCTS z ewoluowaną polityką drzewa (GP) | do zrobienia |
+| Benchmark 11 map, zamrożony i zwalidowany | gotowe (`md2-reconstructed-v1`, 2026-07-19) |
+| Deterministyczny, klonowalny silnik MD2 | gotowe (`domain/engine.py`) |
+| Reguły i decyzje rekonstrukcyjne spisane | gotowe (`docs/rules/`) |
+| Cztery persony i funkcje użyteczności | gotowe (`domain/personas.py`) |
+| Agent losowy jako punkt odniesienia | gotowe (`cli/random_agent.py`) |
+| MCTS-UCB1, jedno drzewo na mapę | gotowe (`domain/mcts.py`) |
+| Eksperyment wznawialny + raport Tabeli II | gotowe (`cli/mcts_experiment.py`) |
+| Baseline UCB1 na pełnym zakresie | gotowe (`data/results/ucb1_bfs.csv`) |
+| MCTS z ewoluowaną polityką drzewa (GP) | gotowe: ewolucja i ocena (`cli/evolve.py`, `data/results/ours_bfs.csv`, `ours_bfs10.csv`, `gp_generations_bfs.csv`, `gp_runs_bfs.json`) |
 | PPO jako rozszerzenie porównawcze | do zrobienia |
 | Analiza cech poziomów, tabele i wykresy | do zrobienia |
 | Testy statystyczne | do zrobienia |
@@ -108,7 +108,7 @@ Stable-Baselines3, opcjonalnie tqdm.
 
 ## 6. Agenci do zaimplementowania
 
-### 6.1. MCTS-UCB1 — gotowe
+### 6.1. MCTS-UCB1
 
 Baseline zgodny z artykułem: osobne uruchomienia dla każdej persony, ta sama
 funkcja użyteczności, klasyczna polityka drzewa.
@@ -148,6 +148,9 @@ Parametry z artykułu:
 | mapy treningowe | 1, 2, 3, 4, 7, 10 |
 | test | wszystkie 11 map |
 
+Protokół ewolucji i rozstrzygnięcia tego, czego artykuł nie podaje:
+`docs/rules/decisions.md`, sekcja „Protokół ewolucji tree policy".
+
 ### 6.3. PPO
 
 Cel: rozszerzenie względem artykułu — sprawdzenie, czy uczenie ze wzmocnieniem
@@ -179,15 +182,11 @@ javelins_thrown, teleports_used, traps_sprung, minitaur_knockouts
 ```
 
 Obecny `cli/mcts_experiment.py` zapisuje podzbiór tych kolumn plus
-`search_policy`; przy dodawaniu GP i PPO schemat trzeba rozszerzyć do pełnej
-listy, zachowując `search_policy` jako rozróżnienie wariantów.
+`search_policy` (wariant i konwencje pomiaru); przy dodawaniu PPO schemat trzeba
+rozszerzyć do pełnej listy, zachowując `search_policy` jako rozróżnienie wariantów.
 
-Dodatkowo trzeba zapisywać trace, potrzebny do heatmap:
-
-- lista pozycji bohatera i lista akcji;
-- zdarzenia po każdej turze;
-- pozycje odwiedzone na mapie;
-- końcowy powód zakończenia gry.
+Ślady partii (`*_paths.jsonl`) zapisują pozycje bohatera i są źródłem heatmap.
+Do uzupełnienia: lista akcji, zdarzenia po każdej turze, powód zakończenia gry.
 
 ## 8. Statystyka
 
@@ -204,7 +203,7 @@ Porównania do wykonania:
 
 ## 9. Plan eksperymentów i harmonogram
 
-Eksperymenty 0 (walidacja map) i 1 (sanity check agenta losowego) są wykonane.
+Eksperymenty 0 (walidacja map), 1 (sanity check agenta losowego), 2 (baseline UCB1) i 3 (ewolucja polityki drzewa) są wykonane.
 
 | Nr | Eksperyment | Procedura | Wyniki | Kryterium zaliczenia |
 | --- | --- | --- | --- | --- |
@@ -285,10 +284,6 @@ Wykresy:
 | PPO uczy się niestabilnie | zacząć od prostszej obserwacji i nagrody, ograniczyć porównanie do zachowania końcowego, pokazać krzywe uczenia, traktować PPO jako rozszerzenie, nie warunek reprodukcji |
 | Niepewności rekonstrukcji map | utrzymywać `docs/benchmark.md` jako jawny rejestr, porównywać algorytmy na tych samych mapach, nie obiecywać liczb identycznych z artykułem |
 
-Ryzyko rozjazdu między opisem gry i opisem eksperymentu jest zamknięte regułą
-z sekcji 3. Ryzyko zbyt czasochłonnych pełnych zasad MD2 zmaterializowało się
-i zostało obsłużone — silnik implementuje pełny zestaw mechanik.
-
 ## 13. Definicja ukończenia projektu
 
 - zrekonstruowane mapy zamrożone i opisane, niepewności udokumentowane,
@@ -303,11 +298,7 @@ i zostało obsłużone — silnik implementuje pełny zestaw mechanik.
 
 ## 14. Najbliższy krok
 
-Przeliczyć pełny baseline UCB1 — 11 map × 4 persony × 50 prób:
-
-```powershell
-.\.venv\Scripts\python.exe -m src.minidungeons.cli.mcts_experiment --trials 50 --time-limit 300
-```
-
-Eksperyment jest wznawialny, więc można go prowadzić partiami. Po zakończeniu
-wygenerować Tabelę II przez `--report-only` i dopiero wtedy zaczynać GP.
+- testy statystyczne MCTS-GP vs MCTS-UCB1 (Welch, 95% CI) i tabele/wykresy
+  z sekcji 10 na obowiązujących wynikach z `data/results/`;
+- wrapper Gymnasium i agent PPO (sekcja 6.3);
+- analiza cech poziomów (eksperyment 5).

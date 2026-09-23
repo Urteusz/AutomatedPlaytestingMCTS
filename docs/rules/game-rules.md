@@ -10,9 +10,9 @@ Baza wiedzy o logice gry i pomiarach. Warstwa wizualna nie musi być odtworzona
 | `docs/reference/articles/minidungeons_2.pdf` | jak działa gra: obiekty, przeciwnicy, oszczep, portale, kolejność tur |
 | `docs/reference/articles/1802.06881v1_MCTS.pdf` | jak autorzy badali persony: metryki (Table I), 11 map, protokół MCTS |
 
-W razie konfliktu **parametrów eksperymentu** (HP startowe, liczba map,
+W razie konfliktu parametrów eksperymentu (HP startowe, liczba map,
 budżet prób) ważniejszy jest artykuł MCTS — dlatego bohater startuje z 10 HP,
-a nie z zakresu 1–10 HP z opisu MD2. Dla **mechaniki gry** rozstrzyga zwykle
+a nie z zakresu 1–10 HP z opisu MD2. Dla mechaniki gry rozstrzyga zwykle
 MD2, bo to praca dedykowana opisowi gry — z jednym wyjątkiem: zachowanie
 wizarda bez linii wzroku bierzemy z artykułu MCTS, bo jego wersja jest
 bardziej szczegółowa i zgodna z Fig. 1 (patrz `wizard_without_los`
@@ -103,9 +103,9 @@ Decyzje: `blob_merge_and_turn_order`, `terminal_turn_order`.
 ## 6. Ruch
 
 - postać porusza się o 1 kafel w jednym z czterech kierunków;
-- kolejność rozpatrywania sąsiadów to **N, E, S, W** — to tie-break dla
+- kolejność rozpatrywania sąsiadów to N, E, S, W — to tie-break dla
   równych ścieżek;
-- ruch w ścianę lub poza planszę jest akcją **nielegalną**, nie akcją bez
+- ruch w ścianę lub poza planszę jest akcją nielegalną, nie akcją bez
   efektu — takie ruchy nie pojawiają się na liście legalnych akcji;
 - postać wchodząca na portal jest natychmiast teleportowana do sparowanego
   portalu w tej samej turze;
@@ -117,17 +117,17 @@ Decyzje: `equal_path_tie_break`, `illegal_move`, `npc_exit_behavior`.
 
 ## 7. Linia wzroku
 
-- geometria jest **konfigurowalna** w `data/rules/md2_rules.json` w sekcji
+- geometria jest konfigurowalna w `data/rules/md2_rules.json` w sekcji
   `line_of_sight`, bo publikacje jej nie definiują — mówią wyłącznie
   „unbroken line of sight";
-- domyślnie `geometry: "axis8"` — cztery osie **oraz** dokładne skosy 45°;
+- domyślnie `geometry: "axis8"` — cztery osie oraz dokładne skosy 45°;
   pozostałe wartości to `axis4` (tylko osie) i `raycast` (dowolny kąt);
 - blokują ją wyłącznie ściany; postacie i obiekty jej nie blokują;
 - gdy promień trafia dokładnie w narożnik czterech kafli, blokuje go wtedy
-  i tylko wtedy, gdy **oba** kafle boczne są ścianami — czyli szczelina ma
-  zerową szerokość. Reguła jest **stała, bez przełącznika**: warianty
-  `strict` i `transparent` zostały refutowane rysunkiem MD2 Fig. 1 i usunięte
-  z kodu (patrz `line_of_sight_geometry` w `decisions.md`);
+  i tylko wtedy, gdy oba kafle boczne są ścianami — czyli szczelina ma
+  zerową szerokość. Reguła jest stała, bez przełącznika: warianty `strict`
+  i `transparent` refutuje rysunek MD2 Fig. 1 (patrz `line_of_sight_geometry`
+  w `decisions.md`);
 - `distance_metric` (`chebyshev` domyślnie, alternatywa `manhattan`) daje
   dystans dla zasięgu czaru czarodzieja i dla wyboru najbliższego celu przez
   bloba i ogra; przy `axis4` obie metryki są równoważne, różnią się tylko na
@@ -158,13 +158,13 @@ Decyzje: `wait_action`, `illegal_move`.
 ## 9. Oszczep
 
 - bohater dostaje jeden wielorazowy oszczep na początku każdego poziomu;
-- oszczep zadaje 1 obrażenie dowolnej innej postaci w nieprzerwanej,
-  osiowej linii wzroku;
-- inne postacie **nie zasłaniają** celu;
+- oszczep zadaje 1 obrażenie dowolnej innej postaci w nieprzerwanej linii
+  wzroku (§7);
+- inne postacie nie zasłaniają celu;
 - oszczep ląduje na aktualnym kaflu wybranego celu i zostaje tam także wtedy,
   gdy cel zginie;
 - bohater podnosi oszczep automatycznie po wejściu na jego kafel;
-- rzut liczy się do metryki `JT`, ale **nie** do liczby kroków `ST`.
+- rzut liczy się do metryki `JT`, ale nie do liczby kroków `ST`.
 
 Artykuł zauważa, że gra może być nieskończona: gracz może chodzić w tę i we
 w tę, wciąż radząc sobie z Minitaurem oszczepem. Dlatego eksperyment potrzebuje
@@ -197,7 +197,7 @@ efektu mechanicznego. Pozostałe NPC ignorują skarb. Nie blokuje ruchu.
 - wejście postaci w portal przenosi ją natychmiast do sparowanego portalu
   w tej samej turze;
 - pole docelowe nie może być ścianą;
-- jeśli pole docelowe jest zajęte, **teleport jest zablokowany** i postać
+- jeśli pole docelowe jest zajęte, teleport jest zablokowany i postać
   zostaje na portalu wejściowym;
 - teleportacja nie zwiększa `ST` poza samym ruchem wejścia na portal;
 - wejście bohatera na portal zwiększa `TU`.
@@ -209,7 +209,7 @@ Decyzje: `portal_occupied_destination`.
 - zadaje 1 obrażenie każdej postaci wchodzącej na jej kafel, za każdym razem;
 - nie znika po aktywacji;
 - rani bohatera i NPC posiadające HP;
-- Minitaura, który nie ma HP, **ogłusza na trzy jego akcje**;
+- Minitaura, który nie ma HP, ogłusza na trzy jego akcje;
 - sześć map zawiera co najmniej jedną pułapkę.
 
 Decyzje: `trap_minitaur`.
@@ -219,10 +219,10 @@ Decyzje: `trap_minitaur`.
 ### 11.1. Goblin
 
 - porusza się o 1 kafel w stronę bohatera po najkrótszej ścieżce,
-  ale **tylko gdy ma nieprzerwaną linię wzroku**; bez niej stoi;
+  ale tylko gdy ma nieprzerwaną linię wzroku; bez niej stoi;
 - ma 1 HP i zadaje 1 obrażenie przy kolizji;
 - omija kolizje z innymi goblinami i z wizardami: ich pola są nieprzejezdne
-  wewnątrz przeszukiwania ścieżki, więc goblin **obchodzi je inną trasą**;
+  wewnątrz przeszukiwania ścieżki, więc goblin obchodzi je inną trasą;
   stoi dopiero wtedy, gdy żadna ścieżka nie istnieje;
 - w bloba, ogra i Minitaura może wejść, wywołując kolizję.
 
@@ -230,16 +230,16 @@ Decyzje: `goblin_avoidance_scope`, `blocked_path_detour`.
 
 ### 11.2. Wizard (goblin dystansowy)
 
-- jeśli ma nieprzerwaną linię wzroku do bohatera w zasięgu **5 kafli włącznie**,
+- jeśli ma nieprzerwaną linię wzroku do bohatera w zasięgu 5 kafli włącznie,
   rzuca zaklęcie zadające 1 obrażenie;
-- jeśli ma linię wzroku, ale bohater jest **dalej niż 5 kafli**, podchodzi
+- jeśli ma linię wzroku, ale bohater jest dalej niż 5 kafli, podchodzi
   o 1 kafel w jego stronę;
-- **bez linii wzroku stoi** — żadna klauzula w artykule MCTS nie pozwala mu
+- bez linii wzroku stoi — żadna klauzula w artykule MCTS nie pozwala mu
   wtedy działać (`monsters.wizard.moves_without_los: false` w regułach;
   ustawienie `true` włącza sprzeczną wersję z opisu MD2, w której podchodzi
   zawsze);
 - nigdy nie atakuje i nie rusza się w tej samej turze;
-- ma 1 HP i **nie zadaje obrażeń przez kolizję**;
+- ma 1 HP i nie zadaje obrażeń przez kolizję;
 - dystans to `line_of_sight.distance_metric` (§7);
 - omija gobliny i wizardy tak samo jak goblin.
 
@@ -249,7 +249,7 @@ Decyzje: `wizard_without_los`, `goblin_avoidance_scope`, `blocked_path_detour`.
 
 - nie rusza się, jeśli nie widzi mikstury ani bohatera;
 - rusza się o 1 kafel w stronę najbliższego widocznego celu;
-- przy równym dystansie **preferuje miksturę** przed bohaterem; dalszy remis
+- przy równym dystansie preferuje miksturę przed bohaterem; dalszy remis
   rozstrzyga porządek wierszowy (klucz: dystans, obiekt przed bohaterem,
   wiersz, kolumna);
 - konsumuje miksturę po wejściu na jej kafel, ale się nie leczy;
@@ -265,7 +265,7 @@ Decyzje: `target_tie_break`, `blob_merge_and_turn_order`.
 
 - nie rusza się, jeśli nie widzi skarbu ani bohatera;
 - rusza się o 1 kafel w stronę najbliższego widocznego celu;
-- przy równym dystansie **preferuje skarb** przed bohaterem; tie-break jak
+- przy równym dystansie preferuje skarb przed bohaterem; tie-break jak
   u bloba;
 - konsumuje skarb po wejściu na jego kafel;
 - ma 2 HP i zadaje 2 obrażenia w każdej dozwolonej kolizji, w tym innym ogrom
@@ -275,14 +275,14 @@ Decyzje: `target_tie_break`.
 
 ### 11.5. Minitaur
 
-- **zawsze** porusza się o 1 krok najkrótszą ścieżką A* do bohatera,
+- zawsze porusza się o 1 krok najkrótszą ścieżką A* do bohatera,
   ignorując linię wzroku;
 - przy planowaniu ścieżki traktuje ściany jako blokady, a inne postacie
   i obiekty ignoruje;
 - A* stosuje stały porządek sąsiadów (N, E, S, W);
 - jeśli jego ruch wchodzi w inną postać, rozpatrujemy kolizję według macierzy;
 - zadaje 1 obrażenie przy kolizji;
-- **nie ma HP i nie może zginąć**; po otrzymaniu obrażeń jest ogłuszony
+- nie ma HP i nie może zginąć; po otrzymaniu obrażeń jest ogłuszony
   na 3 swoje akcje;
 - podczas ogłuszenia nie rusza się i można przejść przez jego kafel;
 - każda mapa zawiera Minitaura, `map02` zawiera dwa.
@@ -346,9 +346,9 @@ niewymienionych wprost.
 
 Definicje podane w artykule:
 
-- **martwe końce** — kafle z dokładnie jednym połączonym sąsiadem przechodnim;
-- **wąskie przejścia** — kafle z dwoma połączonymi sąsiadami przechodnimi;
-- **obszary otwarte** — kafle, których wszyscy sąsiedzi są nie-ścianami.
+- martwe końce — kafle z dokładnie jednym połączonym sąsiadem przechodnim;
+- wąskie przejścia — kafle z dwoma połączonymi sąsiadami przechodnimi;
+- obszary otwarte — kafle, których wszyscy sąsiedzi są nie-ścianami.
 
 Przyjęte uzupełnienia:
 
@@ -379,12 +379,12 @@ Pełna lista „many others" nie jest znana i nie da się jej odtworzyć.
 
 `PD`, `MS`, `TO` i `IC` są wartościami względnymi (ratio).
 
-- **`PE`** artykuł zostawia niedomknięte: maksymalizuje `PE` i podaje
-  `PE = 0` po osiągnięciu wyjścia, ale nie podaje wzoru. Przyjęto **`PE = 0`
-  na kaflu wyjścia, `−1` wszędzie indziej** — jedyny wariant, który na
+- `PE`: artykuł zostawia niedomknięte: maksymalizuje `PE` i podaje
+  `PE = 0` po osiągnięciu wyjścia, ale nie podaje wzoru. Przyjęto `PE = 0`
+  na kaflu wyjścia, `−1` wszędzie indziej — jedyny wariant, który na
   baseline UCB1 odtwarza win rate i kolejność person z artykułu (patrz
   `docs/rules/decisions.md`).
-- **`IC`** jest rozstrzygnięte arytmetycznie: `IC` = zabici przez bohatera
+- `IC` jest rozstrzygnięte arytmetycznie: `IC` = zabici przez bohatera
   wrogowie + wypite mikstury + otwarte skarby, dzielone przez ich początkową
   sumę. Notka pod Table I nazywająca `IC` obiektami nie-potworami łamie
   `IC ≤ max(PD,TO)` w każdym z 8 wierszy Table II i jest błędem redakcyjnym.
@@ -407,15 +407,15 @@ są w `data/rules/personas.json`, a wykonuje je
 | Treasure Collector | zebrać jak najwięcej skarbów, drugorzędnie zbliżyć się do wyjścia | `0.7 · TO + 0.3 · PE` |
 | Completionist | konsumować obiekty i zabijać potwory, drugorzędnie zbliżyć się do wyjścia | `0.7 · IC + 0.3 · PE` |
 
-Śmierć bohatera odejmuje **5** od użyteczności każdej persony.
+Śmierć bohatera odejmuje 5 od użyteczności każdej persony.
 
 ## 17. MCTS w protokole artykułu
 
 Fakty z artykułu:
 
 - wszystkie persony używają MCTS do sformułowania sekwencji akcji;
-- MiniDungeons 2 jest deterministyczne, więc persona buduje **jedno drzewo
-  na mapę**;
+- MiniDungeons 2 jest deterministyczne, więc persona buduje jedno drzewo
+  na mapę;
 - budowa drzewa kończy się po znalezieniu zwycięskiego stanu terminalnego
   albo po timeoucie (w wynikach wspomniane maksimum 300 sekund);
 - agent bierze najlepszą znalezioną sekwencję akcji;
@@ -430,8 +430,9 @@ Uzupełnienia tej implementacji:
 - zwycięstwo napotkane wyłącznie w rollout wpływa na wynik tylko przez
   użyteczność w propagacji — jego losowe akcje nie stają się sekwencją
   do odegrania. Do zakończenia szukania potrzebny jest terminalny węzeł drzewa;
-- po wyczerpaniu budżetu czasu agent odgrywa ścieżkę zachłanną po najwyższej
-  średniej użyteczności;
+- po wyczerpaniu budżetu bez wygranej agent odgrywa sekwencję awaryjną
+  (konwencja `fallback`: `utility` / `mean` / `visits`; patrz
+  `docs/rules/decisions.md`);
 - budżet czasu jest jawnym parametrem eksperymentu.
 
 Szczegóły uruchamiania: `README.md`.

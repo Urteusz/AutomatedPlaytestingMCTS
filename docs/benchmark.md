@@ -1,6 +1,6 @@
 # Zamrożony benchmark map `md2-reconstructed-v1`
 
-Status: **zamrożony 2026-07-19**. Etap 0 zakończony.
+Status: zamrożony 2026-07-19.
 
 Układy map zostały odtworzone z `data/maps/md2/source-images/Map*.png` i Fig. 2
 artykułu `docs/reference/articles/1802.06881v1_MCTS.pdf`. Liczebności obiektów
@@ -10,9 +10,9 @@ To rekonstrukcja metodologiczna, nie oryginalny zbiór danych MD2. Zamrożenie n
 oznacza, że ukryte kafle podłogi ani niejednoznaczne podstawy sprite'ów są
 bitowo identyczne z niedostępnymi oryginalnymi plikami map.
 
-**Każda późniejsza poprawka mapy wymaga nowej wersji benchmarku i nowych sum
-kontrolnych.** `md2-reconstructed-v1` nie może być po cichu zmieniony po
-rozpoczęciu eksperymentów.
+Każda późniejsza poprawka mapy wymaga nowej wersji benchmarku i nowych sum
+kontrolnych; `md2-reconstructed-v1` nie może być zmieniony po rozpoczęciu
+eksperymentów.
 
 ## Symbole
 
@@ -125,16 +125,13 @@ Niezmienniki podane w artykule są spełnione:
 `map05.txt` ma 11 kolumn i 14 wierszy i jest przyjęty do benchmarku v1. Siatka
 kontrolna `data/maps/md2/source-images/map5_grid_11x14.png` odsłania wszystkie
 11 pełnych kolumn i 14 pełnych wierszy. Potwierdza też wewnętrzne
-czterokafelkowe segmenty ścian i pionową ścianę w kolumnie 7, które zginęły
-we wcześniejszej transkrypcji 10 × 13.
+czterokafelkowe segmenty ścian i pionową ścianę w kolumnie 7.
 
 Siatka potwierdza końcowe pozycje dolnych wierszy: wyjście `[11, 7]`, Minitaur
-`[12, 6]`, goblin `[12, 7]`, mikstura `[12, 9]`. Zawartość audytowana jako
-`map05_copy.txt` została podniesiona do kanonicznego `map05.txt`; symbol wyjścia
-znormalizowano z małego `x` na wymagane wielkie `X`.
+`[12, 6]`, goblin `[12, 7]`, mikstura `[12, 9]`.
 
 Mapa 5 pozostaje wyraźnie mniejsza od standardowych map w opublikowanej Fig. 2,
-więc **niestandardowe wymiary 11 × 14 muszą być zaraportowane w pracy**.
+więc niestandardowe wymiary 11 × 14 muszą być zaraportowane w pracy.
 
 ## Pewność rekonstrukcji i akceptacja
 
@@ -158,8 +155,8 @@ MD2 §3 podaje dla poziomu z Fig. 1 cztery liczby: 105 kafli przechodnich,
 240 możliwych ruchów, 118 dostępnych rzutów oszczepem, branching factor 3,41.
 `map02` odtwarza dokładnie dwie z nich bez żadnego dopasowywania:
 
-- **105** kafli przechodnich (policzone z `map02.txt`);
-- **240** możliwych ruchów, średni stopień `240/105 = 2,2857` = cytowane
+- 105 kafli przechodnich (policzone z `map02.txt`);
+- 240 możliwych ruchów, średni stopień `240/105 = 2,2857` = cytowane
   w artykule „2,29".
 
 To razem z liczebnością person (2 Minitaury, 2 Wizardy, 2 Bloby, 3 Gobliny,
@@ -173,27 +170,27 @@ w stronę bohatera i ginie wchodząc na pułapkę `[15, 2]`, leżącą dokładni
 między nimi — zgodne z prawym panelem Fig. 1. Zamrożone jako
 `../tests/domain/test_rules_engine.py::test_map02_matches_md2_figure1_after_three_north_moves`.
 
-Prawy panel Fig. 1 rozstrzygnął też **zachowanie wizarda bez linii wzroku**:
+Prawy panel Fig. 1 rozstrzyga też zachowanie wizarda bez linii wzroku:
 oba wizardy (`[1, 3]` i `[13, 7]`) stoją tam po trzech turach na swoich polach,
 choć bohater jest cały czas poza ich linią wzroku. Wyklucza to dosłowne
 czytanie „otherwise, they move 1 step toward the Hero" z opisu MD2 na rzecz
 wersji z artykułu MCTS, gdzie ruch też wymaga LOS — patrz `wizard_without_los`
 w `docs/rules/decisions.md`.
 
-Prawy panel Fig. 1 dał też **refutację osiowej linii wzroku**: ogr ze startu
+Prawy panel Fig. 1 refutuje też osiową linię wzroku: ogr ze startu
 `[12, 2]` opuszcza swoje pole, zjada skarb z `[13, 1]` i kończy na `[14, 1]`
 jako „fancy". Osiowo widzi z `[12, 2]` wyłącznie `[12, 1]` i `[13, 2]`, do
 których bohater nie dojdzie w trzech turach, więc pod osiami nie mógłby wykonać
 ani jednego ruchu. Stąd domyślne `line_of_sight.geometry: "axis8"` w regułach.
 
-Liczba dostępnych rzutów oszczepem (118) **nadal się nie zgadza** i nie zgadza
+Liczba dostępnych rzutów oszczepem (118) się nie zgadza i nie zgadza
 się z żadnym wariantem: osie 70, `axis8` z domyślnymi narożnikami 95, raycast
 143 (21 przetestowanych kombinacji geometrii, reguł narożnika i blokerów,
 dokładny DDA zweryfikowany brute-force'em). Nie jest to więc test geometrii, tylko niewyjaśniona
 rozbieżność — patrz `line_of_sight_geometry` w `docs/rules/decisions.md`.
 Nasza liczba jest zamrożona w
 `test_map02_javelin_target_count_stays_below_the_published_118`, żeby
-rozbieżność nie zniknęła po cichu.
+rozbieżność nie zniknęła niezauważona.
 
 ## Pozostałe ograniczenia metodologiczne
 
