@@ -280,12 +280,11 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(240, moves)
 
     def test_map02_javelin_target_count_stays_below_the_published_118(self):
-        """MD2 Fig. 1 reports 118 javelin actions across the 105 tiles
-        (branching 3.41 = (240+118)/105). No line of sight variant we tested
-        reproduces 118: axis4 gives 70, the shipped axis8 95, an unrestricted
-        raycast 143. This test pins our number so
-        the gap stays visible instead of drifting silently - see
-        `line_of_sight_geometry` in docs/rules/decisions.md."""
+        """MD2 Fig. 1 podaje 118 rzutow oszczepem na 105 kaflach; axis8 daje 95.
+
+        Test przypina nasza liczbe, zeby luka byla widoczna - patrz
+        `line_of_sight_geometry` w docs/rules/decisions.md.
+        """
 
         env = MiniDungeon(MAP_DIR / "map02.txt")
         throws = sum(
@@ -326,14 +325,10 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual((14, 1), env.npcs[6].position)
 
     def test_map02_matches_md2_figure1_after_three_north_moves(self):
-        """NPC state after the hero's first three N moves, i.e. the paper's
-        after-three-turns panel. Two things in that panel are legible enough to
-        test: the minitaur closes three tiles down column 1, and ogre id 6
-        leaves (12, 2), eats the treasure at (13, 1) and turns fancy. The latter
-        is impossible under axial LOS (from (12, 2) it can only see (12, 1) and
-        (13, 2), neither of which the hero can reach in three moves), which is
-        why the shipped geometry is axis8. Goblin id 9 catches LOS once the hero
-        enters row 15 and dies stepping onto the trap lying between them."""
+        """Stan NPC po trzech ruchach N bohatera, jak panel MD2 Fig. 1.
+
+        Ogr id 6 zjada skarb z (13, 1) - pod osiowym LOS to niemozliwe, stad axis8.
+        """
 
         env = MiniDungeon(MAP_DIR / "map02.txt")
         self.assertEqual((18, 1), env.hero_position)
@@ -363,8 +358,7 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(0, env.metrics.potions_drunk)  # blob does not heal or count as hero drinking
 
     def test_axial_geometry_freezes_the_figure1_ogre(self):
-        """Regression guard for the bug this replaced: with `axis4` the ogre of
-        MD2 Fig. 1 cannot move at all in three turns, contradicting the panel."""
+        """Pod `axis4` ogr z MD2 Fig. 1 nie ruszylby sie w trzy tury, wbrew panelowi."""
 
         env = MiniDungeon(MAP_DIR / "map02.txt", rules_path=self.make_rules({"geometry": "axis4"}))
         for _ in range(3):
@@ -390,11 +384,10 @@ class RulesEngineTests(unittest.TestCase):
                 self.assertEqual(geometry == "axis4", (2, 1) in env.objects)
 
     def test_only_two_walls_at_a_corner_block_diagonal_sight(self):
-        """A 45 degree ray from (1, 1) to (3, 3) crosses the corner of four
-        tiles twice; its sides at the first crossing are (1, 2) and (2, 1).
-        Sight passes while at least one of them is floor and stops once both
-        are walls - the single rule left after `transparent` and `strict` were
-        refuted by MD2 Fig. 1, see docs/rules/decisions.md."""
+        """Promien 45 stopni z (1, 1) do (3, 3) przechodzi przez naroze (1, 2)/(2, 1).
+
+        Widocznosc przechodzi, dopoki choc jeden z tych kafli jest podloga.
+        """
 
         for rows, visible in (
                 (("#g.E#", "#...#"), True),   # both corner sides open
@@ -409,10 +402,7 @@ class RulesEngineTests(unittest.TestCase):
                 self.assertEqual(visible, env.has_line_of_sight((1, 1), (3, 3)))
 
     def test_corner_crossing_is_detected_outside_45_degrees(self):
-        """A (3, 1) ray also hits an exact corner, between (3, 1) and (2, 2)
-        after passing (2, 1) - it happens for every direction whose reduced form
-        has two odd components. Missing this is what made an earlier
-        sampling-based prototype miscount, hence the explicit case."""
+        """Promien (3, 1) tez trafia dokladnie w naroze, miedzy (3, 1) a (2, 2) po (2, 1)."""
 
         rows = ("#####", "#g..#", "#.#.#", "##..#", "#Er.#", "#..X#", "#####")
         env = self.make_env(*rows, line_of_sight={"geometry": "raycast"})

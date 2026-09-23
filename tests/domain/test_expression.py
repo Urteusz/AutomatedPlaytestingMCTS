@@ -70,14 +70,9 @@ class PublishedFormulaTests(unittest.TestCase):
                 self.assertTrue(to_infix(parse(text)))
 
     def test_runner_formula_degenerates_under_binary_pe(self) -> None:
-        """Czlon PE*PE*(PE+1) z eq. (6) jest zerem dla PE w {0, -1}.
+        """Czlon PE*PE*(PE+1) z eq. (6) zeruje sie dla surowego PE w {0, -1}.
 
-        Dotyczy SUROWEJ wartosci terminala. W drzewie zmienne Tabeli I sa
-        srednia po stanach koncowych symulacji (sekcja V-A artykulu), a srednia
-        binarnego PE jest ciagla, wiec czlon sie nie zeruje - i ta konfiguracja
-        wypada najlepiej (2/9 wygranych vs 0/9 dla ciaglego PE). Ciagle PE jest
-        gorsze, bo PE^2*(PE+1) jest niemonotoniczne: maksimum wypada w ~2/3
-        drogi od wyjscia, wiec formula nagradza bledzenie.
+        W drzewie terminale sa srednia po symulacjach, wiec przy binarnym PE czlon juz sie nie zeruje.
         """
 
         score = compile_expression(parse(self.formulas["runner"]))

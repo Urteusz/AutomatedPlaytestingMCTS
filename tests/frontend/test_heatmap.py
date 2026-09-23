@@ -1,8 +1,4 @@
-"""Logika podgladu heatmap: skale, metryki person i skladanie warstwy cieplnej.
-
-Rysowanie nie jest tu testowane - wymagaloby okna. Testowane jest wszystko, co
-decyduje o liczbach na ekranie, bo to one ida potem do pracy.
-"""
+"""Logika podgladu heatmap: skale, metryki person i warstwa cieplna (bez rysowania)."""
 
 import csv
 import tempfile

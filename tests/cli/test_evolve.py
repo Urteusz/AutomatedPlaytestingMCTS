@@ -18,10 +18,8 @@ from src.minidungeons.cli.evolve import (
 )
 from src.minidungeons.infrastructure.paths import MD2_BENCHMARK_DIR, PROJECT_ROOT
 
-# Uwaga na dwie nazwy tego samego pakietu (README): `cli/evolve.py` importuje
-# domene jako `minidungeons.*`, wiec drzewa wyrazen podawane jego funkcjom musza
-# pochodzic z tej samej kopii modulu - `isinstance` w `to_infix` nie rozpoznaje
-# typow z `src.minidungeons.*`.
+# `cli/evolve.py` importuje `minidungeons.*`, a `isinstance` w `to_infix` nie rozpoznaje
+# typow z `src.minidungeons.*`, wiec drzewa musza pochodzic z tej samej kopii modulu.
 from minidungeons.domain.expression import parse
 from minidungeons.domain.gp_fitness import evaluate_playthrough
 
@@ -43,8 +41,7 @@ class PooledFitnessTests(unittest.TestCase):
         self.assertEqual(len(tasks), 2 * 2 * 2)
 
     def test_duplicated_chromosomes_are_evaluated_once(self) -> None:
-        """Elitaryzm i migracja przenosza te same formuly - populacja 100
-        osobnikow ma zwykle znacznie mniej unikalnych chromosomow."""
+        """Elitaryzm i migracja przenosza te same formuly, wiec unikalnych jest mniej."""
 
         fitness = self.make()
         self.assertEqual(len(fitness._missing(["PE", "PE", "PE"])), 2)
@@ -67,11 +64,7 @@ class PooledFitnessTests(unittest.TestCase):
         self.assertEqual(fitness.core_value("PE"), 0.5)
 
     def test_task_arguments_match_the_worker_signature(self) -> None:
-        """Straznik zgodnosci krotki zadania z `evaluate_playthrough`.
-
-        Trzy ostatnie pola to konwencje, ktore MUSZA byc te same, co w przebiegu
-        oceniajacym - inaczej GP optymalizuje inna funkcje celu niz raportuje
-        Tabela II (patrz `gp_fitness._configure_conventions`)."""
+        """Konwencje w krotce zadania musza byc te same co w przebiegu oceniajacym."""
 
         fitness = self.make(maps=("map01",))
         task = fitness._missing(["PE"])[0]
@@ -174,8 +167,7 @@ class EvolveCliTests(unittest.TestCase):
         self.run_cli("--promote")
         promoted = json.loads(self.policies.read_text(encoding="utf-8"))
         self.assertEqual(promoted["policies"]["runner"], entry["formula"])
-        # domyslny pe_mode MUSI byc konwencja ramienia oceniajacego - inaczej GP
-        # optymalizuje inna funkcje celu niz raportuje Tabela II
+        # domyslny pe_mode musi byc konwencja ramienia oceniajacego
         self.assertEqual(promoted["pe_mode"], "manhattan")
         parse(promoted["policies"]["runner"])  # formula musi byc czytelna dla EvolvedPolicy
 

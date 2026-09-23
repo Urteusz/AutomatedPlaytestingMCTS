@@ -118,7 +118,7 @@ class MctsExperimentResumeTests(unittest.TestCase):
 
 
 class Ucb1ReportTests(unittest.TestCase):
-    """Testy tabeli podsumowujacej, przeniesione z osobnego skryptu raportu."""
+    """Tabela podsumowujaca."""
 
     def test_mean_with_ci95_for_constant_sample(self) -> None:
         self.assertEqual((0.25, 0.0), mean_with_ci95([0.25, 0.25, 0.25, 0.25]))

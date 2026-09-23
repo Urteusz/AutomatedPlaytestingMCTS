@@ -125,11 +125,8 @@ class MctsPhaseTests(unittest.TestCase):
     def test_single_tree_falls_back_to_best_discovered_sequence_on_timeout(self) -> None:
         """Bez terminalnego wezla z wyjsciem szukanie nie moze zglosic wygranej.
 
-        Rollout zwraca tylko utility, wiec zwyciestwo napotkane w losowej
-        symulacji nie staje sie sekwencja do odegrania - zostaje "best sequence
-        of actions it discovered" (sekcja V artykulu). Runner z binarnym PE nie
-        zyskuje niczym poza wyjsciem, a kazdy krok kosztuje 0,01, wiec
-        najlepszym odkrytym stanem jest sam korzen: agent stoi.
+        Wygrana z rolloutu nie staje sie sekwencja do odegrania, a Runner z binarnym PE
+        najlepiej wypada stojac w korzeniu.
         """
 
         map_path = self.make_map("#####", "#E.X#", "#####")
@@ -149,16 +146,11 @@ class MctsPhaseTests(unittest.TestCase):
         self.assertEqual(0, result["steps"])
 
     def test_best_discovered_sequence_reaches_a_deep_high_utility_node(self) -> None:
-        """Regresja na defekt zmierzony w pelnym przebiegu: zejscie zachlanne po
-        `mean_utility` dziecka trafialo w wezel z jednym szczesliwym rolloutem i
-        urywalo sie na nim, wiec 181 z 250 partii fallbackowych odgrywalo jedna
-        akcje. Teraz liczy sie uzytecznosc STANU wezla, wiec Treasure Collector
-        idzie po skarb lezacy trzy kroki dalej, nawet gdy pierwszy krok wyglada
-        w statystykach slabo.
+        """Sekwencja awaryjna liczy uzytecznosc stanu wezla, nie `mean_utility` dziecka,
+        wiec jeden szczesliwy rollout nie urywa jej po pierwszej akcji.
         """
 
-        # wyjscie zamurowane, wiec wygrana jest niemozliwa i partia MUSI przejsc
-        # przez sekwencje awaryjna - inaczej test mierzylby zwykla wygrana
+        # wyjscie zamurowane, wiec partia musi przejsc przez sekwencje awaryjna
         map_path = self.make_map("#######", "#E..r#X", "#######")
         agent = MonteCarloTreeSearch(map_path)
         result = agent.play_single_tree("treasure_collector", time_limit_s=None,

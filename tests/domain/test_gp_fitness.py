@@ -91,14 +91,9 @@ class PlaythroughEvaluationTests(unittest.TestCase):
         self.assertEqual(float(row["core"]), float(row["win"]))  # type: ignore[arg-type]
 
     def test_pe_mode_reaches_the_tree_policy(self) -> None:
-        """PE binarne i ciagle daja rozne przebiegi - inaczej flaga nic nie robi.
+        """PE binarne i ciagle daja rozne przebiegi.
 
-        Mierzone na Completioniscie, nie na Runnerze: przy binarnym PE w utility
-        Runner nie zyskuje niczego poza samym wyjsciem, wiec gdy drzewo wyjscia
-        nie znajdzie, jego najlepsza odkryta sekwencja jest pusta (stanie w
-        miejscu) niezaleznie od ksztaltu drzewa - i fitness przestaje odrozniac
-        pe_mode. Completionist ma 0,7*IC, wiec kazda inna sciezka w drzewie daje
-        inny stan koncowy.
+        Na Completioniscie, bo Runner przy binarnym PE bez wyjscia stoi niezaleznie od drzewa.
         """
 
         arguments = {"persona": "completionist", "max_iterations": 300}
