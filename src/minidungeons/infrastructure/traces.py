@@ -1,9 +1,6 @@
-"""Zapis i odczyt sladow przebytych partii (JSONL obok CSV z metrykami).
+"""Slady przebytych partii w JSONL obok CSV z metrykami.
 
-Jedna linia = jedna proba: persona, mapa, numer proby, odegrane akcje i kolejne
-kafle bohatera. Silnik jest deterministyczny, wiec sama lista akcji wystarcza do
-pelnego odtworzenia partii; `path` jest zapisany osobno, zeby agregacja (np.
-heatmapa) nie musiala odgrywac tysiecy prob.
+Silnik jest deterministyczny, wiec akcje wystarczaja do odtworzenia; `path` oszczedza odgrywania przy agregacji.
 """
 
 from __future__ import annotations
@@ -106,13 +103,7 @@ def cell_counts(paths: Iterable[Sequence[Coord]]) -> dict[Coord, int]:
 
 
 def mean_visits(paths: Sequence[Sequence[Coord]]) -> dict[Coord, float]:
-    """Kafel -> srednia liczba wizyt **na partie**.
-
-    Dzielimy przez liczbe sciezek, nie przez liczbe krokow, wiec wartosc czyta sie
-    jako "ile razy persona stanela na tym kaflu w przecietnej partii". Powtorne
-    wejscie w tej samej partii liczy sie osobno - inaczej heatmapa gubilaby
-    zawracanie, ktore jest cala roznica miedzy personami.
-    """
+    """Kafel -> srednia liczba wizyt na partie (dzielona przez liczbe sciezek, nie krokow)."""
 
     if not paths:
         return {}
@@ -120,12 +111,7 @@ def mean_visits(paths: Sequence[Sequence[Coord]]) -> dict[Coord, float]:
 
 
 def average_visits(per_persona: Mapping[str, Sequence[Sequence[Coord]]]) -> dict[Coord, float]:
-    """Srednia srednich po personach: kazda persona wazy tyle samo.
-
-    Nie da sie tego zastapic `mean_visits` po zlaczonych sciezkach - persona
-    z dluzszymi partiami zdominowalaby wynik, a pytanie brzmi "gdzie chodza
-    persony", nie "gdzie chodzi wiekszosc krokow".
-    """
+    """Srednia srednich po personach, zeby persona z dluzszymi partiami nie zdominowala wyniku."""
 
     means = [mean_visits(paths) for paths in per_persona.values() if paths]
     if not means:

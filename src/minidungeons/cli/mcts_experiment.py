@@ -1,10 +1,4 @@
-"""Eksperyment MCTS wedlug protokolu artykulu (Tabela II).
-
-Ten modul odpowiada wylacznie za: argumenty, definicje pojedynczej proby
-(`run_one`), schemat wiersza wyniku i formatowanie Tabeli II. Wznawianie,
-pula procesow i obsluga Ctrl+C siedza w `infrastructure.experiment_runner`,
-bo dokladnie tego samego potrzebuje driver ewolucji GP.
-"""
+"""Eksperyment MCTS wedlug protokolu artykulu (Tabela II)."""
 
 from __future__ import annotations
 
@@ -88,7 +82,6 @@ TABLE_TITLES = {
 }
 
 
-# --- pojedyncza proba -------------------------------------------------------
 
 
 def build_policy(tree_policy: str, persona: str) -> SelectionPolicy:
@@ -128,7 +121,6 @@ def run_one(
     }
 
 
-# --- Tabela II --------------------------------------------------------------
 
 
 def format_table_value(mean: float, ci95: float, percentage: bool) -> str:
@@ -168,7 +160,6 @@ def summarize(rows: list[Row], tree_policy: str = "ucb1") -> None:
     )
 
 
-# --- CLI --------------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:

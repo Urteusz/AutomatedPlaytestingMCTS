@@ -1,23 +1,6 @@
-"""Fitness ewolucji tree policy - sekcja VI-A arXiv:1802.06881.
+"""Fitness tree policy (sekcja VI-A arXiv:1802.06881): utility persony na koncu partii.
 
-Artykul definiuje fitness osobnika jako **utility persony policzone na koncu
-partii** (`f_MK = U_MK`), usrednione po partiach na szesciu mapach treningowych
-(1, 2, 3, 4, 7, 10). Chromosom calkowicie zastepuje UCB1 w tree policy; reszta
-MCTS - rollout 10 ruchow, backpropagacja utility, jedno drzewo na mape - zostaje
-bez zmian.
-
-Dwie decyzje wlasne, bo artykul milczy:
-
-* **budzet iteracyjny, nie czasowy** - `max_iterations` zamiast `time_limit_s`.
-  Fitness liczony na czasie nie jest odtwarzalny, wiec ta sama populacja dalaby
-  inny wynik przy innym obciazeniu maszyny;
-* **staly seed partii** - przy deterministycznym silniku para (mapa, seed)
-  jednoznacznie wyznacza wynik chromosomu, wiec ocene mozna cache'owac. Liczbe
-  seedow na mape podnosi `--seeds-per-map`, jesli overfitting do jednego seeda
-  okaze sie problemem.
-
-Modul nie zna procesow ani plikow: `evaluate_playthrough` jest funkcja zadania
-dla `infrastructure.experiment_runner.run_in_pool`, a sciezki map podaje driver.
+Srednia po mapach 1, 2, 3, 4, 7, 10; budzet iteracyjny i staly seed dla odtwarzalnosci.
 """
 
 from __future__ import annotations
@@ -29,13 +12,10 @@ from .mcts import MonteCarloTreeSearch
 from .personas import PERSONA_NAMES, utility_from_metrics
 from .selection_policy import EvolvedPolicy
 
-# Mapy treningowe z sekcji VI-A: "Evolving agents are tested on maps
-# 1, 2, 3, 4, 7, and 10 of Fig. 2".
+# mapy treningowe z sekcji VI-A
 TRAINING_MAP_NAMES = ("map01", "map02", "map03", "map04", "map07", "map10")
 
-# "The best performing run (based on the persona's core priority, e.g. monsters
-# killed for the Monster Killer) is chosen among the three evolutionary runs."
-# Runner nie ma metryki zbierania - jego priorytetem jest dojscie do wyjscia.
+# sekcja VI-A: najlepszy z 3 runow po core priority persony; Runner - dojscie do wyjscia
 CORE_METRIC = {
     "runner": "reached_exit",
     "monster_killer": "monster_ratio",
@@ -57,15 +37,9 @@ _ORIGINAL_METRIC_VALUES = MiniDungeon.metric_values
 
 
 def _configure_conventions(utility_pe: str, ic_mode: str) -> None:
-    """Ustaw w workerze te same konwencje, ktorymi mierzy sie ramie oceniajace.
+    """Ustaw w workerze konwencje ramienia oceniajacego, zeby GP optymalizowalo te sama utility.
 
-    Bez tego GP optymalizowaloby INNA funkcje celu niz ta, ktora potem raportuje
-    Tabela II: `metric_values()` liczy `proximity_to_exit` binarnie, a przebiegi
-    porownawcze jada na `manhattan`. Utility persony wchodzi tu dwa razy - jako
-    nagroda propagowana w drzewie (kazdy rollout) i jako sam fitness na koncu
-    partii - wiec podmiana musi byc na poziomie `metric_values`, nie tylko na
-    koncowym slowniku metryk. `ic_mode` dotyczy Completionisty, ktory ma w
-    uzytecznosci `0,7*IC`.
+    Podmiana musi byc w `metric_values`, bo utility wchodzi i do rolloutow, i do fitnessu.
     """
 
     global _PATCHED
@@ -105,11 +79,7 @@ def evaluate_playthrough(
     ic_mode: str = "combined",
     fallback: str = "utility",
 ) -> dict[str, object]:
-    """Jedna partia jednego chromosomu na jednej mapie - zadanie dla puli.
-
-    Argumenty sa proste (str/int), bo przechodza przez pickle do workera:
-    skompilowana formula i obiekt polityki nie sa picklowalne.
-    """
+    """Jedna partia chromosomu na mapie - zadanie dla puli; argumenty proste, bo ida przez pickle."""
 
     _configure_conventions(utility_pe, ic_mode)
     policy = EvolvedPolicy(

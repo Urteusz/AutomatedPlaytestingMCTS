@@ -1,13 +1,4 @@
-"""Programowanie genetyczne dla tree policy - sekcja V-B arXiv:1802.06881.
-
-Chromosom to drzewo wyrazenia z `expression.py`. Ewolucja idzie modelem wysp:
-migracja w kazdej generacji, po migracji piecioro najlepszych z kazdej wyspy
-tworzy jej pule rodzicielska, elitaryzm 15%, mutacja 10% (podmiana calego
-chromosomu na losowy - tak to opisuje artykul), krzyzowanie przez wymiane
-losowych poddrzew z jednostajnym wyborem rodzicow.
-
-Interpretacje tam, gdzie artykul milczy, sa opisane w docstringach funkcji.
-"""
+"""Programowanie genetyczne tree policy - model wysp z sekcji V-B arXiv:1802.06881."""
 
 from __future__ import annotations
 
@@ -39,11 +30,7 @@ def random_tree(
     max_depth: int = INIT_MAX_DEPTH,
     depth: int = 0,
 ) -> Expr:
-    """Losowe drzewo o glebokosci z [min_depth, max_depth].
-
-    Ponizej `min_depth` wymuszamy wezel wewnetrzny, powyzej `max_depth` lisc;
-    pomiedzy losujemy 50/50 (artykul podaje tylko granice glebokosci).
-    """
+    """Losowe drzewo o glebokosci z [min_depth, max_depth]; pomiedzy granicami lisc z p=0,5."""
 
     if depth >= max_depth:
         force_leaf = True
@@ -84,11 +71,7 @@ def replace_subtree(expression: Expr, index: int, replacement: Expr) -> Expr:
 
 
 def crossover(first: Expr, second: Expr, rng: random.Random) -> tuple[Expr, Expr]:
-    """Wymiana losowych poddrzew; przy przekroczeniu MAX_DEPTH ponawiamy proba.
-
-    Artykul nie mowi, co robic z potomkiem za glebokim - po kilku probach
-    zwracamy rodzicow bez zmian, zeby operator nigdy nie wywalil populacji.
-    """
+    """Wymiana losowych poddrzew; gdy potomek nie miesci sie w MAX_DEPTH, zwraca rodzicow."""
 
     first_nodes = list(iter_subtrees(first))
     second_nodes = list(iter_subtrees(second))
@@ -140,8 +123,7 @@ def evolve(
 ) -> Iterator[GenerationStats]:
     """Uruchom ewolucje, oddajac statystyki po kazdej generacji.
 
-    `fitness` dostaje cala populacje naraz (zeby dala sie zrownoleglic) i zwraca
-    liste ocen w tej samej kolejnosci. Wyzej znaczy lepiej.
+    `fitness` ocenia cala populacje naraz; wyzej znaczy lepiej.
     """
 
     rng = random.Random(seed)

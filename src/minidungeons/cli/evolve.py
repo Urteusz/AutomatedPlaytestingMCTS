@@ -1,19 +1,6 @@
-"""Ewolucja tree policy wedlug protokolu artykulu (sekcja VI-A).
+"""Ewolucja tree policy GP wedlug protokolu artykulu (sekcja VI-A).
 
-Protokol: dla kazdej persony 3 niezalezne uruchomienia po 100 generacji,
-populacja 100 osobnikow w 5 wyspach, fitness usredniany po 6 mapach
-treningowych. Zwyciezcze uruchomienie wybiera sie po **glownej metryce
-persony**, nie po fitnessie (`gp_fitness.CORE_METRIC`).
-
-Ten modul odpowiada wylacznie za: argumenty, rozdzielenie fitnessu na procesy,
-dziennik generacji i wybor formul. Operatory genetyczne siedza w
-`domain/evolution.py`, definicja fitnessu w `domain/gp_fitness.py`, a wznawialny
-zapis i pula procesow w `infrastructure/experiment_runner.py`.
-
-Wznawianie dziala na poziomie **uruchomienia** (persona x run): ukonczone
-uruchomienia zapisuja sie do JSON-a i po restarcie sa pomijane. Populacji w
-trakcie generacji nie checkpointujemy - przerwane uruchomienie liczy sie od
-poczatku.
+Zwycieskie uruchomienie wybiera sie po glownej metryce persony, nie po fitnessie.
 """
 
 from __future__ import annotations
@@ -61,20 +48,10 @@ SCHEMA = CsvSchema(
 )
 
 
-# --- fitness na puli procesow -----------------------------------------------
 
 
 class PooledFitness:
-    """Fitness calej populacji naraz, liczony w puli procesow.
-
-    Dwie oszczednosci, obie wynikajace z determinizmu silnika:
-
-    * **deduplikacja w generacji** - elitaryzm i migracja przenosza te same
-      chromosomy dalej, wiec populacja 100 osobnikow ma zwykle znacznie mniej
-      unikalnych formul;
-    * **cache miedzy generacjami** - para (formula, mapa, seed) wyznacza wynik
-      jednoznacznie, wiec elita nigdy nie jest liczona drugi raz.
-    """
+    """Fitness populacji w puli procesow, z deduplikacja formul i cache miedzy generacjami."""
 
     def __init__(
         self,
@@ -100,7 +77,7 @@ class PooledFitness:
         self.workers = workers
         self.utilities: dict[tuple[str, str, int], float] = {}
         self.cores: dict[tuple[str, str, int], float] = {}
-        self.playthroughs = 0  # partie rozegrane w ostatniej generacji
+        self.playthroughs = 0
 
     def _store(self, row: Row) -> None:
         key = (str(row["formula"]), str(row["map"]), int(row["seed"]))  # type: ignore[arg-type]
@@ -152,7 +129,6 @@ class PooledFitness:
         return self._mean(self.cores, formula)
 
 
-# --- pojedyncze uruchomienie ewolucji ---------------------------------------
 
 
 def format_duration(seconds: float) -> str:
@@ -231,7 +207,6 @@ def run_evolution(
     }
 
 
-# --- wynikowy JSON ----------------------------------------------------------
 
 
 def load_runs(path: Path) -> dict[str, Any]:
@@ -242,8 +217,7 @@ def load_runs(path: Path) -> dict[str, Any]:
 
 
 def save_runs(path: Path, document: dict[str, Any]) -> None:
-    """Zapis przez plik tymczasowy - 9-godzinny przebieg nie moze stracic
-    dotychczasowych uruchomien na przerwanym zapisie."""
+    """Zapis przez plik tymczasowy, zeby przerwany zapis nie zniszczyl poprzednich uruchomien."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -302,7 +276,6 @@ def promote(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         print(f"  {persona:18s} {entry['core_metric']}={entry['core_value']:.3f}  {entry['formula']}")
 
 
-# --- CLI --------------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:

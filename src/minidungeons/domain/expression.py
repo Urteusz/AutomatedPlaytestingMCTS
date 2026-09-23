@@ -1,10 +1,6 @@
-"""Drzewa wyrazen dla ewoluowanej tree policy.
+"""Drzewa wyrazen ewoluowanej tree policy (arXiv:1802.06881, sekcja V-B).
 
-Reprezentacja chromosomu z Holmgard et al. 2018 (arXiv:1802.06881, sekcja V-B):
-wezly wewnetrzne to jedna z czterech operacji binarnych (+, -, *, /), liscie to
-zmienna z Tabeli I albo stala. Ten modul dostarcza sama reprezentacje, parser i
-kompilator - operatory genetyczne (krzyzowanie, mutacja) beda korzystac z
-`to_dict`/`from_dict` i `iter_subtrees`.
+Wezly: +, -, *, /; liscie: zmienna z Tabeli I albo stala.
 """
 
 from __future__ import annotations
@@ -47,11 +43,7 @@ class ExpressionError(ValueError):
 
 
 def protected_division(numerator: float, denominator: float) -> float:
-    """Dzielenie ochronne - standard w GP, artykul nie podaje konwencji.
-
-    Zwracamy 1.0 (element neutralny mnozenia) zamiast rzucac wyjatkiem, zeby
-    kazdy chromosom byl wykonalny.
-    """
+    """Dzielenie ochronne; 1.0 przy zerowym mianowniku (artykul nie podaje konwencji)."""
 
     return numerator / denominator if denominator else 1.0
 
@@ -101,8 +93,7 @@ def size(expression: Expr) -> int:
 def parse(text: str) -> Expr:
     """Zbuduj drzewo z zapisu infiksowego, np. "2*PD + 3*Rbar + 0.19".
 
-    Parsujemy `ast`-em Pythona (za nawiasy i priorytety), ale przepuszczamy
-    tylko wezly ze zbioru funkcji artykulu - nie jest to ewaluacja kodu.
+    `ast` sluzy tylko do parsowania; przepuszczamy wylacznie wezly ze zbioru artykulu.
     """
 
     try:
@@ -155,7 +146,7 @@ def to_source(expression: Expr) -> str:
 
 
 def to_infix(expression: Expr) -> str:
-    """Czytelny zapis - do logow i raportowania ewoluowanych formul."""
+    """Czytelny zapis infiksowy formuly."""
 
     if isinstance(expression, Const):
         value = expression.value
@@ -166,15 +157,14 @@ def to_infix(expression: Expr) -> str:
 
 
 def compile_expression(expression: Expr) -> Callable[[tuple[float, ...], float], float]:
-    """Skompiluj drzewo raz; formula liczy sie dla kazdego dziecka w selekcji,
-    wiec interpretowanie drzewa w Pythonie byloby waskim gardlem."""
+    """Skompiluj drzewo raz - formula liczy sie dla kazdego dziecka w selekcji."""
 
     source = f"lambda v, r: {to_source(expression)}"
     return eval(compile(source, "<tree_policy>", "eval"), {"_pdiv": protected_division})
 
 
 def evaluate(expression: Expr, terminals: tuple[float, ...], average_reward: float) -> float:
-    """Wolniejsza ewaluacja bez kompilacji - do testow i debugowania."""
+    """Ewaluacja bez kompilacji, do testow."""
 
     return compile_expression(expression)(terminals, average_reward)
 
@@ -211,15 +201,8 @@ PE_MODES = ("binary", "normalized", "manhattan", "graded")
 def resolve_pe(environment: "MiniDungeon", pe_mode: str) -> float:
     """Wartosc terminala PE w wybranym wariancie.
 
-    binary      - 0 na wyjsciu, -1 wpp (jak utility person)
-    manhattan   - 1 - dystans_manhattan/maks, **1 na wyjsciu**, ale BEZ wiedzy
-                  o scianach: kierunek bez rozwiazanej trasy
-    manhattan   - 1 - dystans_manhattan/maks, **1 na wyjsciu**, ale BEZ wiedzy
-                  o scianach: kierunek bez rozwiazanej trasy
-    normalized  - 1 - dystans/maks, czyli **1 na wyjsciu**; konwencja autorow,
-                  jedyna, w ktorej eq. (6)-(9) zachowuja sie tak, jak artykul je
-                  opisuje (patrz `engine.normalized_proximity_to_exit`)
-    graded      - -dystans/maks, wariant historyczny; lamie monotonicznosc eq. (6)
+    binary: 0 na wyjsciu, -1 wpp; normalized/manhattan: 1 - dystans/maks (manhattan
+    bez wiedzy o scianach); graded: -dystans/maks.
     """
 
     if pe_mode == "binary":
@@ -238,13 +221,7 @@ def resolve_pe(environment: "MiniDungeon", pe_mode: str) -> float:
 def terminal_values(environment: "MiniDungeon", *, pe_mode: str = "binary") -> tuple[float, ...]:
     """Zmienne Tabeli I dla stanu w wezle, w kolejnosci TERMINAL_ORDER.
 
-    `HL` jest **znormalizowane do [0,1]** (HP / maks HP). Przypis pod Tabela I
-    wymienia jako stosunki tylko PD, MS, TO i IC, ale kod autorow liczy
-    `result._healthLeft = (double)level.SimHero.Health/10d`, a bez tego eq. (6)
-    sie rozjezdza: przy surowym HP czlon `R_bar*(1-HL)` ma przy pelnym zdrowiu
-    mnoznik -9 i przy typowych wartosciach przewaza czlon bliskosci wyjscia,
-    ktory artykul nazywa glownym. Metryka `health_left` w raportach zostaje
-    surowa - normalizujemy wylacznie zmienna drzewa.
+    HL jest znormalizowane do [0,1] jak w kodzie autorow (`Health/10d`).
     """
 
     metrics = environment.metric_values()

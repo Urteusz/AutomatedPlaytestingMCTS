@@ -7,28 +7,17 @@ from typing import TYPE_CHECKING
 from .expression import Expr, compile_expression, parse, to_infix
 from .rules import PROJECT_ROOT
 
-if TYPE_CHECKING:  # tylko dla typow - w runtime zerwaloby cykl mcts <-> selection_policy
+if TYPE_CHECKING:  # import runtime tworzylby cykl mcts <-> selection_policy
     from .mcts import Node
 
 DEFAULT_TREE_POLICIES_PATH = PROJECT_ROOT / "data" / "rules" / "tree_policies.json"
 
 
 class SelectionPolicy(ABC):
-    """Kryterium zejscia w fazie selekcji plus deklaracja potrzeb wobec wezlow.
+    """Kryterium zejscia w selekcji plus potrzeby wobec wezlow.
 
-    Dwa atrybuty klasowe to caly kontrakt miedzy polityka a drzewem; `mcts`
-    czyta je raz przez `TreeSpec.for_policy` i nigdy nie pyta o konkretna klase:
-
-    * `needs_terminals`  - czy wezly maja liczyc zmienne Tabeli I (UCB1: nie,
-      wiec nie placi za nie ani czasem, ani pamiecia);
-    * `pe_mode`          - wariant terminala PE (jeden z `expression.PE_MODES`:
-      "binary", "normalized", "manhattan", "graded" - patrz
-      `expression.resolve_pe`). Dotyczy WYLACZNIE tree policy - utility person
-      zostaje binarne (docs/rules/decisions.md).
-
-    Zmienne Tabeli I sa zawsze srednia po stanach koncowych symulacji, bo tak
-    mowi sekcja V-A artykulu: "The different personas use metrics collected from
-    the game's state after 10 random moves" - ta sama semantyka co R.
+    `needs_terminals` - czy wezly licza zmienne Tabeli I; `pe_mode` - wariant PE
+    tylko dla tree policy (`expression.PE_MODES`), utility person zostaje binarne.
     """
 
     needs_terminals: bool = False
@@ -43,7 +32,7 @@ class UCB1Policy(SelectionPolicy):
         self.c = c
 
     def select(self, parent: "Node") -> "Node":
-        # t z UCB1 to licznik odwiedzin rodzica (patrz komentarz w backpropagate)
+        # t z UCB1 to licznik odwiedzin rodzica
         total_visits = parent.visits
         best_node = None
         best_score = float("-inf")
@@ -68,12 +57,7 @@ class UCB1Policy(SelectionPolicy):
 
 
 class EvolvedPolicy(SelectionPolicy):
-    """Tree policy z arXiv:1802.06881: formula z GP calkowicie zastepuje UCB1.
-
-    Formula nie ma czlonu eksploracyjnego - jedyne wejscie statystyczne to R
-    (srednia nagroda wezla). Reszta MCTS zostaje bez zmian: rollout 10 losowych
-    ruchow, backpropagacja utility persony, wybor koncowej akcji po sredniej.
-    """
+    """Tree policy z arXiv:1802.06881: formula z GP zastepuje UCB1, bez czlonu eksploracyjnego."""
 
     needs_terminals = True
 

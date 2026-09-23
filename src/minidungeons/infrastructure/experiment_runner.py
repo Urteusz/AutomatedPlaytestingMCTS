@@ -1,13 +1,4 @@
-"""Wspolna mechanika dlugich eksperymentow: wznawialny CSV i pula procesow.
-
-Kazdy driver w tym projekcie (baseline UCB1, ewoluowana tree policy, ewolucja
-GP) potrzebuje tego samego: liczyc godzinami, przezyc Ctrl+C bez utraty
-policzonych prob i wznowic sie bez powtarzania pracy. Ten modul dostarcza te
-mechanike raz; drivery wnosza wlasny schemat wiersza i wlasna funkcje zadania.
-
-Odpowiedzialnosci, ktorych ten modul NIE ma: argumenty CLI, formatowanie tabel
-i cokolwiek z domeny gry.
-"""
+"""Wznawialny CSV i pula procesow wspolne dla dlugich eksperymentow."""
 
 from __future__ import annotations
 
@@ -34,16 +25,13 @@ Row = dict[str, object]
 Task = tuple[object, ...]
 
 
-# --- schemat wiersza --------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class CsvSchema:
-    """Kolumny wyniku plus reguly typowania przy odczycie z CSV.
+    """Kolumny wyniku i typowanie przy odczycie z CSV.
 
-    `key` to kolumny identyfikujace pojedyncza probe - po nich wznawianie
-    poznaje, ze dana praca jest juz policzona. Kolumny spoza `integers`
-    i `floats` wracaja z pliku jako tekst.
+    `key` identyfikuje probe przy wznawianiu; kolumny spoza `integers` i `floats` wracaja jako tekst.
     """
 
     fields: tuple[str, ...]
@@ -70,7 +58,6 @@ class CsvSchema:
         return {name: self.cast(name, raw[name]) for name in self.fields}
 
 
-# --- wznawialny dziennik wynikow --------------------------------------------
 
 
 def load_results(path: Path, schema: CsvSchema) -> dict[ResultKey, Row]:
@@ -103,11 +90,7 @@ def needs_header(path: Path, *, restart: bool) -> bool:
 def durable_writer(
     handle: Any, schema: CsvSchema, *, write_header: bool
 ) -> Callable[[Row], None]:
-    """Zwroc funkcje dopisujaca jeden wiersz z flush + fsync.
-
-    Synchronizacja po kazdym wierszu jest celowa: eksperyment trwa godzinami
-    i musi przezyc twarde ubicie procesu bez utraty policzonych prob.
-    """
+    """Zwroc funkcje dopisujaca wiersz z flush + fsync, zeby przetrwac twarde ubicie procesu."""
 
     writer = csv.DictWriter(handle, fieldnames=list(schema.fields))
 
@@ -126,7 +109,6 @@ def durable_writer(
     return append
 
 
-# --- pula procesow ----------------------------------------------------------
 
 
 def configure_parent_interrupts() -> None:
@@ -166,12 +148,8 @@ def run_in_pool(
 ) -> bool:
     """Policz `tasks` w puli procesow, trzymajac `workers` prob w locie.
 
-    `task_function` musi byc importowalna na poziomie modulu (pickle), a kazdy
-    element `tasks` to komplet jej argumentow pozycyjnych. Wyniki trafiaja do
-    `on_result` w kolejnosci ukonczenia, w procesie rodzica.
-
-    Zwraca True, jesli uzytkownik przerwal Ctrl+C: rozpoczete proby sa wtedy
-    dokanczane i raportowane, nowe nie startuja.
+    `task_function` musi byc picklowalna; wyniki trafiaja do `on_result` w procesie rodzica.
+    Zwraca True po Ctrl+C: rozpoczete proby sa dokanczane, nowe nie startuja.
     """
 
     task_iterator = iter(tasks)
@@ -215,7 +193,6 @@ def run_in_pool(
     return interrupted
 
 
-# --- statystyka -------------------------------------------------------------
 
 
 def mean_with_ci95(values: Sequence[float]) -> tuple[float, float]:

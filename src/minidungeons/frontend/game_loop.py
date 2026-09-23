@@ -157,7 +157,6 @@ def describe_event(event: dict) -> str | None:
     return None
 
 
-# warstwy rysowania 
 
 def background_render(screen, env: MiniDungeon):
     for row in range(env.height):
@@ -313,7 +312,6 @@ def font(size: int) -> pygame.font.Font:
     return _fonts[size]
 
 
-# petla gry --------
 
 def main(argv: list[str] | None = None) -> None:
     """Punkt wejscia minidungeons-play."""

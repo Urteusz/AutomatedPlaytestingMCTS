@@ -1,13 +1,4 @@
-"""MCTS dla person MiniDungeons 2 - petla wspolna dla kazdej tree policy.
-
-Podzial odpowiedzialnosci:
-
-* `TreeSpec` - czego tree policy potrzebuje od wezlow (patrz `selection_policy`);
-* `Node`     - zamrozony stan gry plus statystyki symulacji;
-* `MonteCarloTreeSearch` - jedna iteracja (`_iterate`), budowa drzewa
-  (`_build_tree`) i dwa protokoly na niej oparte: `search` (jeden ruch) oraz
-  `play_single_tree` (cala partia, protokol z artykulu).
-"""
+"""MCTS dla person MiniDungeons 2 - petla wspolna dla kazdej tree policy."""
 
 from __future__ import annotations
 
@@ -25,12 +16,7 @@ from .personas import utility
 
 @dataclass(frozen=True, slots=True)
 class TreeSpec:
-    """Konfiguracja wezlow wynikajaca z tree policy.
-
-    Dzieki temu `Node` nie zna zadnej konkretnej polityki - dostaje gotowa
-    specyfikacje i przekazuje ja dzieciom. UCB1 zostawia wartosci domyslne,
-    wiec nie placi za zmienne Tabeli I ani czasem, ani pamiecia.
-    """
+    """Konfiguracja wezlow wynikajaca z tree policy; `Node` nie zna konkretnej polityki."""
 
     collect_terminals: bool = False
     pe_mode: str = "binary"
@@ -45,8 +31,7 @@ class TreeSpec:
 
 DEFAULT_SPEC = TreeSpec()
 
-# warianty "best sequence of actions it discovered" (sekcja V) - patrz
-# `_fallback_sequence` i docs/rules/decisions.md
+# odczytania "best sequence of actions it discovered" (sekcja V)
 FALLBACKS = ("utility", "mean", "visits")
 
 
@@ -62,18 +47,16 @@ class Node:
     ) -> None:
         self.env = env
         self.parent = parent
-        self.action = action  # akcja, ktora doprowadzila do tego stanu
+        self.action = action
         self.spec = spec
         self.children: dict[Action, "Node"] = {}
         self.untried = list(env.legal_actions())
         self.visits: int = 0
         self.total_utility = 0.0
-        # wezel wyczerpany = terminalny albo w calosci rozwiniety i majacy same
-        # wyczerpane dzieci. Bez tego polityka bez czlonu eksploracyjnego (np.
-        # ewoluowana formula) potrafi w nieskonczonosc wybierac martwy lisc.
+        # wyczerpany = terminalny albo rozwiniety z samymi wyczerpanymi dziecmi;
+        # polityka bez czlonu eksploracyjnego inaczej wybiera martwy lisc w kolko
         self.exhausted = not self.untried
-        # suma zmiennych Tabeli I po stanach koncowych symulacji przechodzacych
-        # przez ten wezel - ta sama semantyka co R (sekcja V-A artykulu)
+        # sumy zmiennych Tabeli I po stanach koncowych symulacji, jak R (sekcja V-A)
         self.terminal_sums: list[float] | None = (
             [0.0] * len(TERMINAL_ORDER) if spec.collect_terminals else None
         )
@@ -128,34 +111,23 @@ class MonteCarloTreeSearch:
         return self.env.legal_actions()
 
     def step(self, action: Action | str) -> dict[str, object]:
-        # mutuje stan w miejscu i zwraca opis zdarzen tej tury
         _, info = self.env.step(action)
         self.played.append(action if isinstance(action, Action) else Action.move(action))
-        # kafel portalu tez jest odwiedzony, wiec zapisujemy go przed miejscem
-        # docelowym - inaczej w sladzie powstalby przeskok przez pol mapy
+        # kafel portalu tez jest odwiedzony - bez niego slad przeskakuje przez mape
         for event in info["events"]:
             if event["type"] == "teleport" and event.get("actor") == "hero":
                 self.path.append(event["from"])  # type: ignore[arg-type]
         self.path.append(self.env.hero_position)
         return info
 
-    # --- rdzen algorytmu -------------------------------------------------
-
     def _iterate(self, persona: str, rng: random.Random) -> Node:
-        """Jedna iteracja MCTS. Zwraca lisc, na ktorym skonczyla sie selekcja.
-
-        Wolajacy sprawdza na zwroconym wezle wlasny warunek stopu - dzieki temu
-        `search` i `play_single_tree` dziela caly przebieg iteracji.
-        """
+        """Jedna iteracja MCTS; zwraca lisc, na ktorym skonczyla sie selekcja."""
 
         node = self.root
-        # 1. selekcja: schodz tree policy, poki wezel jest w pelni rozwiniety
         while not node.untried and node.viable_children():
             node = node.best_child(self.policy)
-        # 2. ekspansja: jesli jest co rozwijac i gra sie nie skonczyla
         if node.untried and not node.env.done:
             node = node.expand(rng)
-        # 3. symulacja i 4. propagacja
         value, terminals = self.rollout(node.env, persona, rng)
         self.backpropagate(node, value, terminals)
         return node
@@ -163,11 +135,10 @@ class MonteCarloTreeSearch:
     def rollout(
         self, env: MiniDungeon, persona: str, rng: random.Random, depth: int = 10
     ) -> tuple[float, tuple[float, ...] | None]:
-        # gramy na kopii - stan wezla zostaje zamrozony
         sim = env.clone()
         for _ in range(depth):
             legal = sim.legal_actions()
-            if not legal:  # smierc albo wyjscie - koniec wczesniej
+            if not legal:
                 break
             sim.step(rng.choice(legal))
         terminals = None
@@ -187,21 +158,18 @@ class MonteCarloTreeSearch:
                 sums = current.terminal_sums
                 for index, sample in enumerate(terminals):
                     sums[index] += sample
-            # znacznik wyczerpania idzie ta sama sciezka co statystyki
             current.refresh_exhausted()
             current = current.parent
-
-    # --- protokoly oparte na powyzszej petli -----------------------------
 
     def search(self, persona: str, iterations: int, seed: int = 0) -> Action | None:
         """Jeden ruch: zbuduj drzewo w zadanym budzecie i oddaj najlepsza akcje."""
 
         rng = random.Random(seed)
         for _ in range(iterations):
-            if self.root.exhausted:  # cale drzewo przeszukane
+            if self.root.exhausted:
                 break
             self._iterate(persona, rng)
-        # decyzja: najlepsza SREDNIA, bez czlonu eksploracyjnego
+        # decyzja po sredniej, bez czlonu eksploracyjnego
         return max(self.root.children.values(), key=Node.mean_utility).action
 
     def _build_tree(
@@ -211,17 +179,13 @@ class MonteCarloTreeSearch:
         deadline: float | None,
         max_iterations: int | None,
     ) -> tuple[list[Action] | None, int]:
-        """Buduj drzewo do wygranej albo do wyczerpania budzetu.
+        """Buduj drzewo do wygranej albo wyczerpania budzetu; zwraca (sciezka | None, iteracje).
 
-        Zwraca sekwencje akcji do wygrywajacego wezla (albo None) i liczbe
-        wykonanych iteracji. Zwyciestwo osiagniete tylko podczas rollout-u
-        wplywa na backpropagation przez utility, ale losowe akcje symulacji nie
-        staja sie sekwencja do odegrania - potrzebny jest terminalny wezel
-        drzewa (polityka "tree_terminal_only").
+        Wygrana tylko w rollout-cie sie nie liczy - potrzebny terminalny wezel drzewa.
         """
 
         iterations = 0
-        while not self.root.exhausted:  # inaczej dalsze iteracje sa puste
+        while not self.root.exhausted:
             if deadline is not None and time.perf_counter() >= deadline:
                 break
             if max_iterations is not None and iterations >= max_iterations:
@@ -241,13 +205,9 @@ class MonteCarloTreeSearch:
         max_iterations: int | None = None,
         fallback: str = "utility",
     ) -> dict[str, int | float | bool]:
-        """Protokol z artykulu: jedno drzewo na mape, potem odegranie najlepszej
-        sekwencji.
+        """Protokol z artykulu: jedno drzewo na mape, potem odegranie najlepszej sekwencji.
 
-        Budzet jest czasowy (`time_limit_s`), iteracyjny (`max_iterations`) albo
-        jednoczesnie jeden i drugi - konczy pierwszy osiagniety. Sam budzet
-        iteracyjny jest odtwarzalny, czasowy nie, wiec fitness GP liczy sie na
-        iteracjach.
+        Konczy pierwszy osiagniety budzet; tylko iteracyjny jest odtwarzalny.
         """
 
         if time_limit_s is None and max_iterations is None:
@@ -257,7 +217,6 @@ class MonteCarloTreeSearch:
         rng = random.Random(seed)
         deadline = None if time_limit_s is None else time.perf_counter() + time_limit_s
         winning_actions, iterations = self._build_tree(persona, rng, deadline, max_iterations)
-        # rozroznienie sladu: wygrana z drzewa czy zachlanny fallback
         self.from_tree = winning_actions is not None
         sequence = (
             winning_actions if winning_actions is not None
@@ -272,7 +231,7 @@ class MonteCarloTreeSearch:
         return result
 
     def _path_to(self, node: Node) -> list[Action]:
-        # akcje od korzenia do wezla; odtwarzalne, bo MD2 jest deterministyczny
+        # odtwarzalne, bo MD2 jest deterministyczny
         actions: list[Action] = []
         current = node
         while current.parent is not None:
@@ -281,19 +240,9 @@ class MonteCarloTreeSearch:
         return list(reversed(actions))
 
     def _fallback_sequence(self, persona: str, mode: str) -> list[Action]:
-        """Sekwencja odgrywana po wyczerpaniu budzetu bez wygranej.
+        """Sekwencja odgrywana po wyczerpaniu budzetu bez wygranej (sekcja V: "best sequence").
 
-        Artykul, sekcja V: agent "will take the best sequence of actions it
-        discovered", ale nie mowi, co znaczy "best". Trzy odczytania, wszystkie
-        wybieralne, bo roznica jest MIERZALNA na metrykach obiektowych Tabeli II:
-
-        * "utility" - sciezka do wezla o najwyzszej uzytecznosci persony
-          policzonej na stanie tego wezla (`_best_utility_node_sequence`);
-        * "mean"    - zejscie zachlanne po `mean_utility` dziecka;
-        * "visits"  - zejscie po liczbie wizyt, czyli "robust child" - marsz
-          glowna, wypracowana galezia drzewa.
-
-        Pomiary i wybor: docs/rules/decisions.md.
+        utility - wezel o najwyzszej utility persony; mean / visits - zejscie zachlanne.
         """
 
         if mode == "utility":
@@ -305,8 +254,7 @@ class MonteCarloTreeSearch:
         raise ValueError(f"Nieznany fallback {mode!r}; oczekiwano {FALLBACKS}")
 
     def _greedy_descent(self, key) -> list[Action]:
-        """Zejscie zachlanne od korzenia po podanym kluczu, do pierwszego wezla
-        bez dzieci."""
+        """Zejscie zachlanne od korzenia po `key` do pierwszego wezla bez dzieci."""
 
         actions: list[Action] = []
         node = self.root
@@ -316,23 +264,9 @@ class MonteCarloTreeSearch:
         return actions
 
     def _best_utility_node_sequence(self, persona: str) -> list[Action]:
-        """Sciezka do wezla o najwyzszej uzytecznosci persony.
+        """Sciezka do wezla o najwyzszej utility persony (eq. 2-5) na jego stanie.
 
-        Artykul, sekcja V: agent buduje jedno drzewo na mape i przerywa budowe
-        po znalezieniu wygranej "or it reaches timeout, wherein it will take the
-        **best sequence of actions it discovered**". Odkryta sekwencja to
-        sciezka od korzenia do wezla, a "najlepsza" mierzymy uzytecznoscia
-        persony na stanie tego wezla - ta sama funkcja, ktora ocenia stany
-        koncowe symulacji (eq. 2-5).
-
-        Poprzednia wersja schodzila zachlannie po `mean_utility` dziecka i byla
-        zla z dwoch powodow: srednia z jednego szczesliwego rolloutu bije
-        rzetelna srednia z tysiecy symulacji, a marsz urywal sie na pierwszym
-        nierozwinietym wezle. Zmierzone na 250 partiach fallbackowych pelnego
-        przebiegu: 181 z nich odgrywalo DOKLADNIE JEDNA akcje.
-
-        Remisy rozstrzyga krotsza sciezka - zgodnie z duchem eq. 2-5, gdzie
-        kazdy krok jest karany (-0,01*ST).
+        Remis rozstrzyga krotsza sciezka, bo eq. 2-5 karza kazdy krok (-0,01*ST).
         """
 
         best_node = self.root

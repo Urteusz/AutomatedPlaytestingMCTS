@@ -1,9 +1,5 @@
-"""Deterministic MiniDungeons 2 environment reconstructed from the papers.
-
-The text map is an initial-state format. At runtime terrain, floor objects,
-NPCs, the Hero and the javelin are separate layers so the state can be cloned
-safely by MCTS.
-"""
+"""Deterministyczne srodowisko MiniDungeons 2; teren, obiekty, NPC, Hero i oszczep
+to osobne warstwy, zeby MCTS mogl tanio klonowac stan."""
 
 from __future__ import annotations
 
@@ -247,9 +243,7 @@ class MiniDungeon:
         return self.state()
 
     def clone(self) -> "MiniDungeon":
-        # Ręczna kopia zamiast deepcopy, aby ograniczyć czas potrzebny do przetworzenia kopia,
-        # Teren, reguły, portale i dystanse są niemutowalne, wiec klony je współdzielą,
-        # Kopiujemy tylko stan rozgrywki.
+        # teren, reguly, portale i dystanse sa niemutowalne - klony je wspoldziela
         other = object.__new__(MiniDungeon)
         other.__dict__.update(self.__dict__)
         other.objects = dict(self.objects)
@@ -279,7 +273,6 @@ class MiniDungeon:
         }
 
     def state_key(self) -> tuple[object, ...]:
-        # caly stan w jednej krotce - do porownywania stanow miedzy klonami
         npc_key = tuple(
             (npc.npc_id, npc.kind, npc.position, npc.hp, npc.power, npc.stunned_actions, npc.fancy)
             for npc in sorted(self.npcs.values(), key=lambda value: value.npc_id)
@@ -319,24 +312,9 @@ class MiniDungeon:
         return 0.0 if self.hero_position == self.exit else -1.0
 
     def normalized_proximity_to_exit(self) -> float:
-        """PE ciagle w [0, 1]: **1 na wyjsciu**, 0 na najdalszym kaflu mapy.
+        """PE ciagle w [0, 1]: 1 na wyjsciu, 0 na najdalszym kaflu (dlugosc sciezki).
 
-        Konwencja odzyskana z kodu wspolautora artykulu
-        (MasterMilkX/minidungeons-3d, `SimUtilityCalculator`):
-        `1 - (L - Lmin)/(Lmax - Lmin)`, gdzie L to dlugosc sciezki A*.
-        Potwierdzona niezaleznie od tego kodu dwoma wlasnosciami eq. (6):
-
-        * czlon `PE^2*(PE+1)` jest na [0,1] **scisle rosnacy** (f' = PE*(3PE+2)),
-          z maksimum dokladnie na wyjsciu - co zgadza sie z opisem w artykule
-          ("strongly prioritizes the proximity to the exit variable");
-        * `R_bar*(1-HL)` daje przy PE >= 0 dodatnie R_bar blisko wyjscia, wiec
-          niskie HL podnosi wynik - zgodnie z "actively prefers reaching the
-          exit with low health". Przy PE <= 0 oba te opisy sa falszywe.
-
-        Portale sa krawedziami o koszcie 0 (patrz `_compute_exit_distances`).
-        Pathfinder autorow ich nie zna - to jego blad, nie konwencja: `SimPortal`
-        ma `OtherPortalPoint`, a `SpatialAStar.StoreNeighborNodes` generuje tylko
-        cztery sasiedztwa kardynalne. Roznica jest zmierzona i raportowana.
+        Konwencja z kodu autorow (`SimUtilityCalculator`); portale maja koszt 0.
         """
 
         distance = self.exit_distances.get(self.hero_position)
@@ -347,20 +325,7 @@ class MiniDungeon:
         return 1.0 - distance / self._exit_distance_span
 
     def manhattan_proximity_to_exit(self) -> float:
-        """PE ciagle w [0, 1] **bez wiedzy o scianach**: 1 na wyjsciu.
-
-        `1 - manhattan(kafel, wyjscie) / maks`, czyli sygnal "cieplo/zimno" w
-        przestrzeni. Rozni sie od `normalized_proximity_to_exit` tym, ze NIE
-        rozwiazuje szukania drogi: tam agent dostaje dlugosc najkrotszej trasy
-        (oracle), tu tylko bliskosc w linii prostej, ktora przy scianie klamie -
-        zmierzone najgorsze przypadki: map07 6 kafli prostych wobec 31 krokow
-        realnych (5,2x), map05 2,0x, map02 1,6x.
-
-        Artykul podaje wylacznie nazwe "Proximity to Exit", a proximity jest
-        pojeciem przestrzennym, wiec ten odczyt jest zgodny z litera. Uwaga na
-        dwuznacznosc: autorzy uzywaja manhattanu jako **heurystyki w A***, wiec
-        ich wynik to realna sciezka - czyli `normalized`, nie ten wariant.
-        """
+        """PE ciagle w [0, 1] z dystansu manhattan, bez wiedzy o scianach."""
 
         if not self._manhattan_span:
             return 1.0
@@ -369,20 +334,7 @@ class MiniDungeon:
         return 1.0 - distance / self._manhattan_span
 
     def manhattan_proximity_to_exit(self) -> float:
-        """PE ciagle w [0, 1] **bez wiedzy o scianach**: 1 na wyjsciu.
-
-        `1 - manhattan(kafel, wyjscie) / maks`, czyli sygnal "cieplo/zimno" w
-        przestrzeni. Rozni sie od `normalized_proximity_to_exit` tym, ze NIE
-        rozwiazuje szukania drogi: tam agent dostaje dlugosc najkrotszej trasy
-        (oracle), tu tylko bliskosc w linii prostej, ktora przy scianie klamie -
-        zmierzone najgorsze przypadki: map07 6 kafli prostych wobec 31 krokow
-        realnych (5,2x), map05 2,0x, map02 1,6x.
-
-        Artykul podaje wylacznie nazwe "Proximity to Exit", a proximity jest
-        pojeciem przestrzennym, wiec ten odczyt jest zgodny z litera. Uwaga na
-        dwuznacznosc: autorzy uzywaja manhattanu jako **heurystyki w A***, wiec
-        ich wynik to realna sciezka - czyli `normalized`, nie ten wariant.
-        """
+        """PE ciagle w [0, 1] z dystansu manhattan, bez wiedzy o scianach."""
 
         if not self._manhattan_span:
             return 1.0
@@ -391,14 +343,7 @@ class MiniDungeon:
         return 1.0 - distance / self._manhattan_span
 
     def graded_proximity_to_exit(self) -> float:
-        """PE ciagle w [-1, 0]: 0 na wyjsciu, -1 na najdalszym kaflu mapy.
-
-        Wariant **historyczny, kontrolny** - zachowany, bo na nim zmierzono
-        wczesniejsze wyniki. NIE uzywac do odtwarzania eq. (6)-(9): na [-1,0]
-        czlon `PE^2*(PE+1)` jest niemonotoniczny, z maksimum w ~0,7 dystansu od
-        wyjscia (0,147) i zerem zarowno na wyjsciu, jak i najdalej - czyli
-        nagradza bledzenie. Wlasciwa konwencja to `normalized_proximity_to_exit`.
-        """
+        """PE ciagle w [-1, 0]; wariant kontrolny, na [-1, 0] eq. 6 jest niemonotoniczne."""
 
         distance = self.exit_distances.get(self.hero_position)
         if distance is None:  # kafel odciety od wyjscia
@@ -408,9 +353,7 @@ class MiniDungeon:
         return -distance / self._exit_distance_span
 
     def _compute_exit_distances(self) -> dict[Coord, int]:
-        """BFS 0-1 od wyjscia; portale sa krawedziami o koszcie 0, bo teleport
-        dzieje sie w tej samej turze. Teren i portale sa niemutowalne, wiec
-        wynik liczymy raz i klony go wspoldziela."""
+        """BFS 0-1 od wyjscia; portale to krawedzie o koszcie 0 (teleport w tej samej turze)."""
 
         distances: dict[Coord, int] = {self.exit: 0}
         queue: deque[Coord] = deque([self.exit])
@@ -690,9 +633,8 @@ class MiniDungeon:
         return self._move_npc_or_stay(npc, next_position, reason="no_path")
 
     def _act_wizard(self, npc: NPC) -> list[dict[str, object]]:
-        # MCTS §IV: czar w LOS do 5 kafli, podejscie w LOS powyzej 5 kafli, bez
-        # LOS zadna klauzula nie pozwala dzialac. Opis MD2 mowi przy tej samej
-        # regule "otherwise" bez warunku LOS - patrz `wizard_without_los`.
+        # MCTS §IV: czar w LOS do 5 kafli, podejscie w LOS powyzej; bez LOS brak akcji
+        # (opis MD2 tego warunku nie ma - patrz `wizard_without_los`)
         if self.has_line_of_sight(npc.position, self.hero_position):
             distance = self.sight_distance(npc.position, self.hero_position)
             attack_range = int(self.rules.value("monsters", "wizard", "ranged_range"))
@@ -851,9 +793,7 @@ class MiniDungeon:
         return int(self.rules.value("monsters", npc.kind, "collision_damage"))
 
     def _load_line_of_sight_rules(self) -> None:
-        """Geometria LOS nie jest zdefiniowana w publikacjach - patrz
-        `line_of_sight_geometry` w docs/rules/decisions.md. Trzymamy ja w
-        regulach, zeby dalo sie porownac warianty na benchmarku."""
+        """Geometria LOS nie jest zdefiniowana w publikacjach (docs/rules/decisions.md)."""
 
         self.los_geometry = str(self.rules.value("line_of_sight", "geometry"))
         self.los_distance_metric = str(self.rules.value("line_of_sight", "distance_metric"))
@@ -882,10 +822,7 @@ class MiniDungeon:
         return self._sight_is_clear(start, end)
 
     def sight_distance(self, start: Coord, end: Coord) -> int:
-        """Dystans w kaflach uzywany przez zasieg czaru i wybor najblizszego celu.
-
-        Przy LOS osiowym oba warianty sprowadzaja sie do dlugosci odcinka, wiec
-        metryka ma znaczenie tylko dla skosow (patrz `los_distance_metric`)."""
+        """Dystans w kaflach dla zasiegu czaru i wyboru celu; rozni sie tylko dla skosow."""
 
         if self.los_distance_metric == "manhattan":
             return self._manhattan(start, end)
@@ -894,13 +831,8 @@ class MiniDungeon:
     def _sight_is_clear(self, start: Coord, end: Coord) -> bool:
         """Czy sciana przecina promien srodek-srodek miedzy `start` i `end`.
 
-        DDA na liczbach calkowitych: kolejnosc przejsc przez granice kafli
-        porownujemy przez t_wiersz = (2k-1)/(2*span_row) i analogicznie dla
-        kolumn, po przemnozeniu na krzyz. Rownosc oznacza, ze promien trafia
-        dokladnie w naroznik czterech kafli - przechodzi wtedy przez styk, o ile
-        chociaz jeden kafel boczny jest przechodni (`_corner_is_open`). Zdarza
-        sie to dla kazdego kierunku, ktorego zredukowana postac ma oba skladniki
-        nieparzyste, nie tylko dla 45 stopni."""
+        Calkowitoliczbowa DDA; trafienie w naroznik rozstrzyga `_corner_is_open`.
+        """
 
         delta_row, delta_column = end[0] - start[0], end[1] - start[1]
         step_row = (delta_row > 0) - (delta_row < 0)
@@ -937,10 +869,7 @@ class MiniDungeon:
         return True
 
     def _corner_is_open(self, sides: tuple[Coord, Coord]) -> bool:
-        """Promien trafil w styk czterech kafli: blokuja go tylko dwie sciany po
-        obu stronach. Wariant rozstrzygniety w docs/rules/decisions.md - zerowej
-        szerokosci szczelina miedzy dwiema scianami nie przepuszcza wzroku, a
-        musniecie jednego naroznika przy otwartym drugim boku - przepuszcza."""
+        """Styk czterech kafli blokuja tylko sciany po obu stronach (docs/rules/decisions.md)."""
 
         return any(self._is_passable(cell) for cell in sides)
 
@@ -999,7 +928,6 @@ class MiniDungeon:
 
     @staticmethod
     def _first_step(parents: dict[Coord, Coord | None], start: Coord, goal: Coord) -> Coord:
-        # cofnij sie po rodzicach do pola tuz za startem
         current = goal
         while parents[current] is not None and parents[current] != start:
             current = parents[current]  # type: ignore[assignment]

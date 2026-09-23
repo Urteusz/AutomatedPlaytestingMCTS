@@ -1,9 +1,6 @@
-"""Heatmapa odwiedzin na planszy MiniDungeons 2.
+"""Heatmapa odwiedzin bohatera na planszy MiniDungeons 2.
 
-Plansze rysuja funkcje z `game_loop`, wiec obraz mapy jest identyczny jak w grze.
-Na wierzchu warstwa cieplna: srednia liczba wizyt bohatera na kaflu na jedna
-partie. Podglad jest jednoekranowy, wybor zbioru, persony i skali idzie z linii
-polecen.
+Plansze rysuje `game_loop`; warstwa cieplna to srednia liczba wizyt na kafel na partie.
 """
 
 from __future__ import annotations
@@ -197,7 +194,6 @@ def win_rate(dataset: Dataset, map_name: str, persona: str) -> float | None:
     return wins / games if games else None
 
 
-# warstwa cieplna --------
 
 def heat_color(fraction: float) -> tuple[int, int, int]:
     """Interpolacja liniowa miedzy przystankami HEAT_STOPS."""
@@ -350,7 +346,6 @@ def empty_render(screen, width: int, height: int) -> None:
     screen.blit(text, text.get_rect(center=(width // 2, height // 2)))
 
 
-# petla podgladu ----------
 
 @dataclass
 class View:
@@ -375,10 +370,7 @@ class View:
         return False
 
     def cycle_persona(self, step: int) -> None:
-        """Nastepna/poprzednia persona w kolejnosci z tabeli metryk.
-
-        Kolejnosc jest ta sama co PERSONA_ROWS, wiec podswietlony wiersz HUD
-        przesuwa sie zgodnie z tym, co pokazuje heatmapa."""
+        """Nastepna/poprzednia persona w kolejnosci PERSONA_ROWS, zgodnej z wierszami HUD."""
 
         try:
             index = PERSONA_ROWS.index(self.persona)

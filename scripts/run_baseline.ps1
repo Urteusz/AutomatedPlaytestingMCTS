@@ -1,19 +1,9 @@
 <#
 .SYNOPSIS
-Baseline MCTS-UCB1 wedlug protokolu Tabeli II z arXiv:1802.06881.
+Baseline MCTS wedlug protokolu Tabeli II z arXiv:1802.06881.
 
-Stale protokolu (NIE zmieniac - one decyduja o porownywalnosci z artykulem):
-  --trials 50        50 partii na (persona, mapa)
-  --time-limit 300   300 s budzetu na jedno drzewo, czyli na mape
-  4 persony x 11 map x 50 prob = 2200 partii
-  rollout 10 ruchow, c = sqrt(2), utility eq. 2-5 - zaszyte w kodzie, bez flag
-
-Sprawnosc: partia jest ograniczona CZASEM, wiec zegar scienny ~ 2200 * 300 s / workers.
-  workers 8 -> ~23 h     workers 12 -> ~15 h     workers 15 -> ~12 h
-Wiecej workerow = mniej iteracji na partie (SMT), ale metryki Tabeli II sie od tego
-nie zmieniaja (zmierzone: 375 tys. vs 585 tys. iteracji daly identyczne wyniki).
-
-Przebieg jest WZNAWIALNY: po Ctrl+C uruchom ponownie te sama komende.
+50 prob na (persona, mapa), 300 s na drzewo, 4 persony x 11 map.
+Przebieg jest wznawialny: po Ctrl+C uruchom ponownie te sama komende.
 #>
 [CmdletBinding()]
 param(
