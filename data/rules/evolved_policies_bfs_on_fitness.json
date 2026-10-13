@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "source": "Re-ewolucja GP (gp_runs_bfs_on.json, 10 uruchomien, pe_portals=on); wybor po fitness na 6 mapach treningowych, 20 seedow, budzet 50000 iteracji",
+  "pe_mode": "normalized",
+  "policies": {
+    "runner": "((((((Rbar / (PE + MS)) / (PE + MS)) * Rbar) * MS) - ((((Rbar - (-0.7161 * -0.2418)) * Rbar) * MS) - (((Rbar / (PE + MS)) / (PE + MS)) + PE))) + MS)",
+    "monster_killer": "((((((((0.4107 - -0.1477) * Rbar) - ((0.2824 / MS) - -0.1477)) * 0.2824) * (0.2824 / MS)) / HL) + ((((0.4107 - -0.1477) * MS) - -0.1477) * 0.2824)) - (0.4107 - -0.1477))",
+    "treasure_collector": "((Rbar - ((Rbar / Rbar) + PE)) + ((((MS * ((Rbar / JT) + PE)) * ((Rbar / Rbar) + PE)) * (((HL / 0.1156) / 0.1156) / 0.1156)) - ((Rbar / Rbar) + PE)))",
+    "completionist": "((Rbar / (((0.7728 * 0.5053) + 0.5053) / 0.2492)) - (0.586 / IC))"
+  },
+  "notes": {
+    "runner": "run 0 z 10, core20=0.6083, fitness20=0.3710",
+    "monster_killer": "run 0 z 10, core20=0.5377, fitness20=0.5680",
+    "treasure_collector": "run 0 z 10, core20=0.2506, fitness20=0.3883",
+    "completionist": "run 9 z 10, core20=0.4294, fitness20=0.1992"
+  }
+}

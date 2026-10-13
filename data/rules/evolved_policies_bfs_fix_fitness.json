@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "source": "Re-ewolucja GP (gp_runs_bfs_fix.json, 10 uruchomien, pe_portals=off); wybor po fitness na 6 mapach treningowych, 20 seedow, budzet 50000 iteracji",
+  "pe_mode": "normalized",
+  "policies": {
+    "runner": "(((((-0.0144 - (-0.8832 / -0.1442)) / (-0.7957 * -0.3245)) - ((-0.7957 * -0.0144) * ST)) - (((0.385 / HL) * ((PE - 0.6423) + -0.518)) - (-0.0144 - (-0.8832 / -0.1442)))) * (PE / ((IC + HL) - (ST * 0.7657))))",
+    "monster_killer": "(((((HL / ST) / (((0.751 / (MS + ST)) / (MS + MS)) / MS)) / (MTK * 0.4403)) / (((0.9328 / 0.3115) / MS) / MS)) / (((MTK * 0.7572) - (MS - 0.4403)) - (0.3306 - (MTK * 0.7572))))",
+    "treasure_collector": "(((HL / (ST / PE)) / (0.5258 + (HL - ((0.6857 + (0.2569 / (TO / PE))) * (((0.3036 + HL) * (TO - 0.3036)) - 0.3036))))) / (0.5258 + (HL - ((0.6857 + (HL / 0.6857)) * (((HL + 0.6857) * (TO - 0.3036)) - 0.5258)))))",
+    "completionist": "((IC / (((-0.0255 + (0.385 / HL)) + 0.7739) + (MTK + ((((0.1133 / 0.0814) + (TO - PE)) - (MS - MS)) + -0.1448)))) / ((0.7739 + ((-0.1448 / -0.0316) - 0.7065)) - ((-0.3802 - (0.9224 * -0.186)) - (0.9224 * (((-0.0255 + (0.385 / 0.9224)) + (0.7739 + (0.385 / HL))) * -0.186)))))"
+  },
+  "notes": {
+    "runner": "run 7 z 10, core20=0.9250, fitness20=0.5517",
+    "monster_killer": "run 6 z 10, core20=0.5783, fitness20=0.5591",
+    "treasure_collector": "run 0 z 10, core20=0.3756, fitness20=0.5144",
+    "completionist": "run 7 z 10, core20=0.5067, fitness20=0.5233"
+  }
+}

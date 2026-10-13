@@ -13,4 +13,6 @@ archive/
 scratchpad
 *.md
 !README.md
-native/
+# skompilowany port C++ (native/setup.py build_ext --inplace)
+*.pyd
+*.so

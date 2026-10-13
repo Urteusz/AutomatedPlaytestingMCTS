@@ -5,9 +5,10 @@ Srednia po mapach 1, 2, 3, 4, 7, 10; budzet iteracyjny i staly seed dla odtwarza
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
-from .engine import MiniDungeon
+from .engine import DIRECTION_DELTA, MiniDungeon
 from .mcts import MonteCarloTreeSearch
 from .personas import PERSONA_NAMES, utility_from_metrics
 from .selection_policy import EvolvedPolicy
@@ -34,6 +35,43 @@ def core_metric_value(persona: str, metrics: dict[str, int | float | bool]) -> f
 
 _PATCHED: tuple[str, str] | None = None
 _ORIGINAL_METRIC_VALUES = MiniDungeon.metric_values
+_ORIGINAL_EXIT_DISTANCES = MiniDungeon._compute_exit_distances
+
+
+def exit_distances_without_portals(self: MiniDungeon) -> dict[tuple[int, int], int]:
+    """Kardynalny BFS bez krawedzi portali - `pe_portals=off` ramienia oceniajacego."""
+
+    distances = {self.exit: 0}
+    queue = deque([self.exit])
+    while queue:
+        position = queue.popleft()
+        for direction in DIRECTION_DELTA:
+            neighbor = self._offset(position, direction)
+            if neighbor in distances or not self._is_passable(neighbor):
+                continue
+            distances[neighbor] = distances[position] + 1
+            queue.append(neighbor)
+    return distances
+
+
+def exit_distances(environment: MiniDungeon, pe_portals: str) -> dict[tuple[int, int], int]:
+    """Dystanse do wyjscia w danej konwencji, niezaleznie od podmiany w `_configure_pe_portals`."""
+
+    if pe_portals == "on":
+        return _ORIGINAL_EXIT_DISTANCES(environment)
+    if pe_portals == "off":
+        return exit_distances_without_portals(environment)
+    raise ValueError(f"pe_portals musi byc 'on' albo 'off', jest {pe_portals!r}")
+
+
+def _configure_pe_portals(pe_portals: str) -> None:
+    """Portale w BFS do wyjscia: `on` = silnik (krawedz o koszcie 0), `off` = bez nich."""
+
+    if pe_portals not in ("on", "off"):
+        raise ValueError(f"pe_portals musi byc 'on' albo 'off', jest {pe_portals!r}")
+    MiniDungeon._compute_exit_distances = (
+        _ORIGINAL_EXIT_DISTANCES if pe_portals == "on" else exit_distances_without_portals
+    )
 
 
 def _configure_conventions(utility_pe: str, ic_mode: str) -> None:
@@ -78,10 +116,15 @@ def evaluate_playthrough(
     utility_pe: str = "binary",
     ic_mode: str = "combined",
     fallback: str = "utility",
+    pe_portals: str = "on",
 ) -> dict[str, object]:
-    """Jedna partia chromosomu na mapie - zadanie dla puli; argumenty proste, bo ida przez pickle."""
+    """Jedna partia chromosomu na mapie - zadanie dla puli.
+
+    Argumenty sa proste, bo ida przez pickle.
+    """
 
     _configure_conventions(utility_pe, ic_mode)
+    _configure_pe_portals(pe_portals)
     policy = EvolvedPolicy(
         formula, pe_mode=pe_mode, label=persona
     )

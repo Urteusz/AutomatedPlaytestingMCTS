@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "source": "Wlasna ewolucja GP (cli/evolve.py), wybor po glownej metryce persony; zrodlo: gp_runs_bfs.json",
+  "pe_mode": "normalized",
+  "policies": {
+    "completionist": "((Rbar - (((0.9147 / HL) / -0.3507) * (((HL * 0.9147) * 0.9147) - (-0.8651 / IC)))) / ((((0.3058 + -0.5468) - (-0.3507 + (0.4518 / HL))) * (PE + PD)) + -0.8651))",
+    "monster_killer": "((((0.1657 / MS) / ST) - ((0.1657 / MS) / 0.5616)) + ((-0.4737 / (HL - ((0.2292 / MS) / 0.5616))) + 0.5616))",
+    "runner": "((Rbar + Rbar) + (Rbar + (((Rbar + HL) + Rbar) + (Rbar + ((Rbar + Rbar) + (Rbar + -0.2013))))))",
+    "treasure_collector": "(((HL / IC) - (((-0.7943 + 0.7831) - ((0.9006 - ST) / IC)) - ((Rbar / HL) + PE))) + (((((0.9006 - ST) / IC) / IC) - (((HL - TU) - TU) - (((0.9006 - IC) / IC) + PE))) - (-0.3189 - -0.9103)))"
+  },
+  "notes": {
+    "completionist": "run 2 z 3, seed 2, fitness 0.661792, interactive_ratio=0.629854 na mapach treningowych",
+    "monster_killer": "run 1 z 3, seed 1, fitness 0.712569, monster_ratio=0.696002 na mapach treningowych",
+    "runner": "run 2 z 3, seed 2, fitness 0.546931, reached_exit=0.333333 na mapach treningowych",
+    "treasure_collector": "run 0 z 3, seed 0, fitness 0.589044, treasure_ratio=0.508333 na mapach treningowych"
+  }
+}

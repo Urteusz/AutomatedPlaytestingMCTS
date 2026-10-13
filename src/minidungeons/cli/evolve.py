@@ -6,13 +6,14 @@ Zwycieskie uruchomienie wybiera sie po glownej metryce persony, nie po fitnessie
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack
 import json
 import os
-from pathlib import Path
 import sys
 import time
-from typing import Any, Callable, Sequence
+from collections.abc import Callable, Sequence
+from contextlib import ExitStack
+from pathlib import Path
+from typing import Any
 
 from minidungeons.domain.evolution import GenerationStats, evolve
 from minidungeons.domain.expression import PE_MODES, Expr, size, to_infix
@@ -65,6 +66,7 @@ class PooledFitness:
         utility_pe: str = "manhattan",
         ic_mode: str = "mean3",
         fallback: str = "visits",
+        pe_portals: str = "off",
     ) -> None:
         self.persona = persona
         self.map_paths = {path.stem: path for path in map_paths}
@@ -74,6 +76,7 @@ class PooledFitness:
         self.utility_pe = utility_pe
         self.ic_mode = ic_mode
         self.fallback = fallback
+        self.pe_portals = pe_portals
         self.workers = workers
         self.utilities: dict[tuple[str, str, int], float] = {}
         self.cores: dict[tuple[str, str, int], float] = {}
@@ -97,7 +100,7 @@ class PooledFitness:
                     tasks.append((
                         formula, self.persona, str(map_path), seed,
                         self.max_iterations, self.pe_mode,
-                        self.utility_pe, self.ic_mode, self.fallback,
+                        self.utility_pe, self.ic_mode, self.fallback, self.pe_portals,
                     ))
         return tasks
 
@@ -153,6 +156,10 @@ def run_evolution(
         max_iterations=args.iterations,
         pe_mode=args.pe_mode,
         workers=args.workers,
+        utility_pe=args.utility_pe,
+        ic_mode=args.ic_mode,
+        fallback=args.fallback,
+        pe_portals=args.pe_portals,
     )
     seed = args.seed + run_index
     started = time.perf_counter()
@@ -256,7 +263,8 @@ def promote(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     }
     payload = {
         "schema_version": 1,
-        "source": f"Wlasna ewolucja GP (cli/evolve.py), wybor po glownej metryce persony; zrodlo: {args.out.name}",
+        "source": (f"Wlasna ewolucja GP (cli/evolve.py), wybor po glownej metryce persony; "
+                   f"zrodlo: {args.out.name}"),
         "pe_mode": config.get("pe_mode", args.pe_mode),
         "policies": policies,
         "notes": {
@@ -273,7 +281,8 @@ def promote(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
     print(f"zapisano {len(policies)} formul do: {args.policies_out}")
     for persona, entry in sorted(chosen.items()):
-        print(f"  {persona:18s} {entry['core_metric']}={entry['core_value']:.3f}  {entry['formula']}")
+        print(f"  {persona:18s} {entry['core_metric']}={entry['core_value']:.3f}  "
+              f"{entry['formula']}")
 
 
 
@@ -300,6 +309,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="sekwencja po wyczerpaniu budzetu - jak w przebiegu oceniajacym",
     )
     parser.add_argument(
+        "--pe-portals", choices=("off", "on"), default="off",
+        help="portale w BFS do wyjscia (PE) - MUSI byc takie samo jak w przebiegu oceniajacym",
+    )
+    parser.add_argument(
         "--iterations", type=int, default=2000,
         help="budzet iteracji MCTS na jedna partie fitnessu (czas nie jest odtwarzalny)",
     )
@@ -315,10 +328,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--pe-mode", choices=PE_MODES, default="manhattan",
         help="terminal PE tree policy; MUSI byc taki sam jak w przebiegu oceniajacym",
     )
-    parser.add_argument("--seed", type=int, default=0, help="seed GP dla uruchomienia 0; kolejne dostaja +1")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="seed GP dla uruchomienia 0; kolejne dostaja +1")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
-    parser.add_argument("--log", type=Path, default=DEFAULT_LOG, help="dziennik generacji (CSV, krzywe fitnessu)")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="ukonczone uruchomienia i zwycieskie formuly (JSON)")
+    parser.add_argument("--log", type=Path, default=DEFAULT_LOG,
+                        help="dziennik generacji (CSV, krzywe fitnessu)")
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT,
+                        help="ukonczone uruchomienia i zwycieskie formuly (JSON)")
     parser.add_argument("--restart", action="store_true", help="licz od zera zamiast wznawiac")
     parser.add_argument(
         "--promote", action="store_true",
@@ -360,7 +376,8 @@ def main() -> None:
             parser.error(f"{label} musi wynosic co najmniej 1")
 
     map_paths = resolve_maps(args.maps, parser)
-    document = {"schema_version": 1, "config": {}, "runs": []} if args.restart else load_runs(args.out)
+    document = ({"schema_version": 1, "config": {}, "runs": []} if args.restart
+                else load_runs(args.out))
     document["config"] = {
         "generations": args.generations, "population": args.population,
         "islands": args.islands, "elitism": args.elitism, "mutation": args.mutation,
@@ -370,6 +387,7 @@ def main() -> None:
         "utility_pe": args.utility_pe,
         "ic_mode": args.ic_mode,
         "fallback": args.fallback,
+        "pe_portals": args.pe_portals,
         "seed": args.seed,
     }
     done = {(str(entry["persona"]), int(entry["run"])) for entry in document["runs"]}
@@ -389,7 +407,7 @@ def main() -> None:
         f"{len(map_paths)} map x {args.seeds_per_map} seedow, "
         f"budzet {args.iterations} iteracji, pe_mode={args.pe_mode}, "
         f"utility_pe={args.utility_pe}, ic={args.ic_mode}, fallback={args.fallback}, "
-        f"workers={args.workers}; "
+        f"pe_portals={args.pe_portals}, workers={args.workers}; "
         f"gotowe={len(done)}, pozostalo={len(todo)}",
         flush=True,
     )

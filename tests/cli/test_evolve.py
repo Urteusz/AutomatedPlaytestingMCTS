@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import csv
+import inspect
 import json
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import inspect
 import unittest
+from pathlib import Path
 
 from src.minidungeons.cli.evolve import (
     PooledFitness,
@@ -68,15 +68,50 @@ class PooledFitnessTests(unittest.TestCase):
 
         fitness = self.make(maps=("map01",))
         task = fitness._missing(["PE"])[0]
-        formula, persona, map_path, seed, iterations, pe_mode, utility_pe, ic_mode, fallback = task
+        (formula, persona, map_path, seed, iterations, pe_mode, utility_pe, ic_mode, fallback,
+         pe_portals) = task
         self.assertEqual(formula, "PE")
         self.assertEqual(persona, "runner")
         self.assertTrue(Path(map_path).exists())
         self.assertEqual((seed, iterations, pe_mode), (0, 10, "graded"))
         self.assertEqual((utility_pe, ic_mode, fallback), ("manhattan", "mean3", "visits"))
+        self.assertEqual(pe_portals, "off")
 
         signature = inspect.signature(evaluate_playthrough)
         self.assertEqual(len(task), len(signature.parameters))
+
+
+class RunEvolutionConventionTests(unittest.TestCase):
+    def test_cli_conventions_reach_the_fitness(self) -> None:
+        """Regresja: `run_evolution` gubil --utility-pe/--ic-mode/--fallback i liczyl domyslne."""
+
+        import argparse
+        from unittest import mock
+
+        from src.minidungeons.cli import evolve
+
+        captured: dict[str, object] = {}
+
+        class Stop(Exception):
+            pass
+
+        def fake(*args, **kwargs):
+            captured.update(kwargs)
+            raise Stop
+
+        args = argparse.Namespace(
+            seeds_per_map=1, iterations=10, pe_mode="normalized", workers=1,
+            utility_pe="normalized", ic_mode="combined", fallback="utility", pe_portals="on",
+            seed=0,
+        )
+        with mock.patch.object(evolve, "PooledFitness", side_effect=fake):
+            with self.assertRaises(Stop):
+                evolve.run_evolution("runner", 0, args, [], lambda row: None)
+        self.assertEqual(
+            {key: captured[key] for key in ("utility_pe", "ic_mode", "fallback", "pe_portals")},
+            {"utility_pe": "normalized", "ic_mode": "combined", "fallback": "utility",
+             "pe_portals": "on"},
+        )
 
 
 class BestRunSelectionTests(unittest.TestCase):

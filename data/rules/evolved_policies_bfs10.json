@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "source": "Wlasna ewolucja GP pod BFS, 10 uruchomien; wybor regula artykulu (glowna metryka persony) mierzona na 6 mapach treningowych, 20 seedow, budzet 100000 iteracji",
+  "pe_mode": "normalized",
+  "policies": {
+    "runner": "(((TS - ((-0.6356 + (0.8843 / 0.2822)) * ((TS - (0.5026 * (0.5026 * PE))) - (TS - (Rbar * PE))))) - (TS - (Rbar * PE))) + (PE + Rbar))",
+    "monster_killer": "(((0.1981 - ((MS / -0.1769) / 0.0804)) - ((MS / -0.1769) / 0.0804)) + (0.1981 * ((HL + Rbar) * (0.1981 - ((0.0804 / -0.1769) / 0.0804)))))",
+    "treasure_collector": "(((((0.0497 - Rbar) + 0.0497) * (HL + -0.0114)) - (((((TS * HL) * ((IC + 0.0497) - TO)) - HL) * Rbar) + 0.465)) + ((((IC + 0.465) - 0.3044) + (PD / PD)) - 0.3044))",
+    "completionist": "((Rbar - (((0.9147 / HL) / -0.3507) * (((HL * 0.9147) * 0.9147) - (-0.8651 / IC)))) / ((((0.3058 + -0.5468) - (-0.3507 + (0.4518 / HL))) * (PE + PD)) + -0.8651))"
+  },
+  "notes": {
+    "runner": "run 4 z 10, fitness 0.572949, core(1 seed)=0.5, core(20 seedow/100000)=0.7917",
+    "monster_killer": "run 4 z 10, fitness 0.719026, core(1 seed)=0.695539, core(20 seedow/100000)=0.6277",
+    "treasure_collector": "run 8 z 10, fitness 0.603975, core(1 seed)=0.544048, core(20 seedow/100000)=0.4886",
+    "completionist": "run 2 z 10, fitness 0.661792, core(1 seed)=0.629854, core(20 seedow/100000)=0.5326"
+  }
+}
