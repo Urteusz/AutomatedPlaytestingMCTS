@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import Callable, Iterator, Sequence
 
 from .expression import (
     BINARY_OPS,
@@ -136,7 +136,7 @@ def evolve(
         scored: list[list[tuple[float, Expr]]] = []
         offset = 0
         for group in groups:
-            chunk = list(zip(scores[offset : offset + len(group)], group))
+            chunk = list(zip(scores[offset : offset + len(group)], group, strict=True))
             chunk.sort(key=lambda pair: pair[0], reverse=True)
             scored.append(chunk)
             offset += len(group)
@@ -162,7 +162,7 @@ def evolve(
 
         next_groups: list[list[Expr]] = []
         for chunk in scored:
-            elite_count = max(1, int(round(elitism * per_island)))
+            elite_count = max(1, round(elitism * per_island))
             elites = [tree for _, tree in chunk[:elite_count]]
 
             pool = [tree for _, tree in chunk[:mating_pool_top]]

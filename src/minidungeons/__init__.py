@@ -1,12 +1,12 @@
 """Public Python API for MiniDungeons simulations and MCTS experiments."""
 
 from .domain import (
+    NPC,
+    PERSONA_NAMES,
     Action,
     GameRules,
     Metrics,
     MiniDungeon,
-    NPC,
-    PERSONA_NAMES,
     RulesError,
     load_personas,
     load_rules,
@@ -15,12 +15,12 @@ from .domain import (
 )
 
 __all__ = [
+    "NPC",
+    "PERSONA_NAMES",
     "Action",
     "GameRules",
     "Metrics",
     "MiniDungeon",
-    "NPC",
-    "PERSONA_NAMES",
     "RulesError",
     "load_personas",
     "load_rules",

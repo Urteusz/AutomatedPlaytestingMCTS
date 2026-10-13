@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import csv
 import io
-from contextlib import redirect_stdout
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 
 from src.minidungeons.cli.mcts_experiment import mean_with_ci95, summarize
 from src.minidungeons.infrastructure.paths import PROJECT_ROOT

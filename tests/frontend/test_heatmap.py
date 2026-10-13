@@ -85,7 +85,9 @@ class SelectionTests(unittest.TestCase):
 
     def test_win_rate_over_all_personas_covers_every_row_of_the_map(self):
         # runner 1/2 + completionist 0/1 -> 1 wygrana na 3 partie
-        self.assertAlmostEqual(1 / 3, heatmap.win_rate(self.dataset(), "map01", heatmap.ALL_PERSONAS))
+        self.assertAlmostEqual(
+            1 / 3, heatmap.win_rate(self.dataset(), "map01", heatmap.ALL_PERSONAS)
+        )
 
 
 @unittest.skipIf(heatmap is None, "wymaga pygame-ce (pip install -e .[gui])")
@@ -149,7 +151,7 @@ class ColorTests(unittest.TestCase):
     def test_between_two_stops_the_ramp_is_linear(self):
         (low, low_color), (high, high_color) = heatmap.HEAT_STOPS[0], heatmap.HEAT_STOPS[1]
         middle = heatmap.heat_color((low + high) / 2)
-        for channel, (start, end) in enumerate(zip(low_color, high_color)):
+        for channel, (start, end) in enumerate(zip(low_color, high_color, strict=True)):
             self.assertAlmostEqual((start + end) / 2, middle[channel], delta=1)
 
     def test_ramp_has_no_flat_stretch(self):
@@ -223,7 +225,8 @@ class HudFitTests(unittest.TestCase):
         self.assertLess(width, heatmap.MIN_WINDOW_WIDTH - 10, msg=heatmap.HINT)
 
     def test_stats_table_fits_the_narrowest_window(self):
-        right_edge = 10 + heatmap.STAT_NAME_WIDTH + (1 + len(heatmap.STAT_COLUMNS)) * heatmap.STAT_COLUMN_WIDTH
+        columns = 1 + len(heatmap.STAT_COLUMNS)
+        right_edge = 10 + heatmap.STAT_NAME_WIDTH + columns * heatmap.STAT_COLUMN_WIDTH
         self.assertLessEqual(right_edge, heatmap.MIN_WINDOW_WIDTH - 10)
 
     def test_persona_labels_fit_the_name_column(self):

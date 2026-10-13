@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import csv
+import math
+import os
+import signal
+import statistics
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import (
     FIRST_COMPLETED,
     CancelledError,
@@ -13,12 +18,8 @@ from concurrent.futures import (
 )
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
-import math
-import os
 from pathlib import Path
-import signal
-import statistics
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any
 
 ResultKey = tuple[object, ...]
 Row = dict[str, object]
@@ -31,7 +32,8 @@ Task = tuple[object, ...]
 class CsvSchema:
     """Kolumny wyniku i typowanie przy odczycie z CSV.
 
-    `key` identyfikuje probe przy wznawianiu; kolumny spoza `integers` i `floats` wracaja jako tekst.
+    `key` identyfikuje probe przy wznawianiu; kolumny spoza `integers` i `floats`
+    wracaja jako tekst.
     """
 
     fields: tuple[str, ...]

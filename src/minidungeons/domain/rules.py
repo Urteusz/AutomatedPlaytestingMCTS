@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_RULES_PATH = PROJECT_ROOT / "data" / "rules" / "md2_rules.json"
@@ -24,7 +23,7 @@ class GameRules:
     source_path: Path
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "GameRules":
+    def load(cls, path: str | Path | None = None) -> GameRules:
         source_path = Path(path) if path is not None else DEFAULT_RULES_PATH
         source_path = source_path.resolve()
         try:

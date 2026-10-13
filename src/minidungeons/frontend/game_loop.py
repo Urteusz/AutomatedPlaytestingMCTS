@@ -6,15 +6,16 @@ gubi nakladajace sie postacie i HP. Akcje biore z legal_actions()."""
 import argparse
 from collections import deque
 from pathlib import Path
+
 import pygame
 
 from minidungeons.domain import Action, MiniDungeon
 from minidungeons.domain.engine import (
+    NPC,
     SYMBOL_BY_NPC_KIND,
     SYMBOL_BY_OBJECT,
     WALL,
     Coord,
-    NPC,
 )
 from minidungeons.infrastructure.paths import MD2_BENCHMARK_DIR
 

@@ -1,14 +1,14 @@
-from pathlib import Path
 import math
 import random
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from src.minidungeons.domain import Action, MiniDungeon
 from src.minidungeons.domain.mcts import MonteCarloTreeSearch, Node, TreeSpec
-from src.minidungeons.domain.selection_policy import EvolvedPolicy, UCB1Policy
 from src.minidungeons.domain.personas import utility
+from src.minidungeons.domain.selection_policy import EvolvedPolicy, UCB1Policy
 
 
 class PreferEastRandom:

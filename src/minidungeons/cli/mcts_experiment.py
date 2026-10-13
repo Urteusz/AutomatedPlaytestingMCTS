@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack
 import os
-from pathlib import Path
 import sys
 import time
-from typing import Any, Mapping
+from collections.abc import Mapping
+from contextlib import ExitStack
+from pathlib import Path
+from typing import Any
 
 from minidungeons.domain.mcts import MonteCarloTreeSearch
 from minidungeons.domain.personas import PERSONA_NAMES

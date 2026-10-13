@@ -1,13 +1,15 @@
 """Slady przebytych partii w JSONL obok CSV z metrykami.
 
-Silnik jest deterministyczny, wiec akcje wystarczaja do odtworzenia; `path` oszczedza odgrywania przy agregacji.
+Silnik jest deterministyczny, wiec akcje wystarczaja do odtworzenia; `path` oszczedza
+odgrywania przy agregacji.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, IO, Iterable, Mapping, Sequence
+from typing import IO, Any
 
 Coord = tuple[int, int]
 

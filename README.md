@@ -13,7 +13,10 @@ jest zamrożony; modułem badawczym jest MCTS.
    funkcją użyteczności wybranej persony. Kryterium zejścia dostarcza
    `domain/selection_policy` — UCB1 albo formuła wyewoluowana przez GP.
 5. `cli/mcts_experiment` definiuje pojedynczą próbę, a `experiment_runner`
-   rozdziela je na procesy i zapisuje wznawialny CSV.
+   rozdziela je na procesy i zapisuje wznawialny CSV. Obowiązujące wyniki liczy
+   `scripts/final_experiment.py` — ten sam protokół z jawnymi konwencjami pomiaru.
+6. `rl/` opakowuje ten sam silnik w środowisko Gymnasium dla PPO, a `native/`
+   to port silnika i MCTS do C++ (×58) dla przebiegów budżetowanych iteracjami.
 
 ```mermaid
 flowchart LR
@@ -39,6 +42,12 @@ flowchart LR
     Heat[frontend/heatmap] --> Env
     Heat --> Traces
     Heat --> Results
+    Fin[scripts/final_experiment] --> MCTS
+    Fin --> Run
+    RL[rl: env, train, evaluate] --> Env
+    RL --> Results
+    Nat[native: C++ silnik + MCTS] -. test różnicowy .-> Env
+    Sel[scripts/select_runs, native_budget] --> Nat
 ```
 
 Agent MCTS tworzy `MiniDungeon` bezpośrednio ze ścieżki do pliku mapy — między
@@ -53,7 +62,8 @@ algorytmem a domeną nie ma warstwy serwisowej ani repozytorium.
 | `domain/mcts` | węzeł, UCB1, selekcja, ekspansja, rollout, propagacja | CSV, procesów, argumentów CLI |
 | `infrastructure` | kanoniczne ścieżki, ślady partii, wznawialny CSV i pula procesów | przebiegu tury, person, tree policy |
 | `cli` | argumenty, definicja pojedynczej próby, formatowanie tabel | logiki potworów |
-| `frontend` | rysowanie planszy, ręczna rozgrywka, heatmapy | reguł gry — akcje bierze z `legal_actions()` |
+| `frontend` | rysowanie planszy, ręczna rozgrywka, heatmapy, odtwarzacz partii | reguł gry — akcje bierze z `legal_actions()` |
+| `rl` | środowisko Gymnasium, trening i ocena PPO, generator map | MCTS i person poza funkcją użyteczności |
 
 Zależności biegną do środka: `cli` woła `domain`, a `domain/mcts` woła
 `domain/engine`. Silnik nie wie o istnieniu MCTS. Ewentualny adapter (np.
@@ -112,7 +122,9 @@ Domyślne jest `"rollout"`; uzasadnienie w `data/rules/tree_policies.json`.
 
 ## Szybki start
 
-Projekt nie ma zewnętrznych zależności — wystarczy biblioteka standardowa.
+Silnik, MCTS i GP nie mają zewnętrznych zależności — wystarczy biblioteka
+standardowa. Extras: `gui` (pygame-ce) dla frontendu, `rl` (torch, SB3) dla PPO;
+port C++ wymaga `pybind11` i kompilatora C++17.
 
 Losowy agent jako punkt odniesienia:
 
@@ -140,6 +152,23 @@ Sama tabela z istniejącego CSV, bez uruchamiania prób:
 
 Drukuje układ z Tabeli II — Monsters, Potions, Treasures, Interactive Objects,
 Win Rate oraz Time — jako średnia ± 95% przedział ufności dla R, MK, TC i C.
+
+## Pomiar z konwencjami — obowiązujące wyniki
+
+Wynik zależy od czterech konwencji (PE w tree policy, PE w użyteczności, IC,
+sekwencja awaryjna) i od tego, czy BFS do wyjścia zna portale. Wszystkie pliki
+w `data/results/` policzył `scripts/final_experiment.py`, który zapisuje je
+w kolumnie `search_policy`. Baseline i ewoluowane GP w tej samej konwencji:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\final_experiment.py --tag UCB1_BFS --policy ucb1 --trials 50 --time-limit 300 --pe-mode normalized --utility-pe normalized --ic-mode mean3 --fallback visits --pe-portals off --workers 12 --out data\results\ucb1_bfs.csv
+.\.venv\Scripts\python.exe scripts\final_experiment.py --tag OURS_BFS_FIX --policy ours --policies data\rules\evolved_policies_bfs_fix_fitness.json --trials 50 --time-limit 300 --pe-mode normalized --utility-pe normalized --ic-mode mean3 --fallback visits --pe-portals off --workers 12 --out data\results\ours_bfs_fix.csv
+```
+
+Formuły GP wybiera `scripts/select_runs.py` (C++, 6 map treningowych × 20
+seedów, reguła `core` z artykułu albo `fitness`), a `scripts/native_budget.py`
+gra UCB1 lub GP z budżetem iteracji z artykułu (3 mln). Tabelę zbiorczą MCTS
+i PPO drukuje `scripts/table_rl_mcts.py`.
 
 ## Ewolucja tree policy
 
@@ -175,6 +204,45 @@ Zwycięskie formuły przepisuje się do pliku polityk osobnym wywołaniem:
 Wybór spośród trzech uruchomień idzie po głównej metryce persony, nie po
 fitnessie — tak jak w artykule. Po `--promote` wyewoluowane persony gra się tym
 samym eksperymentem co baseline, przełącznikiem `--policy ours`.
+
+Ewolucja na porcie C++ (te same argumenty, ok. 60× szybciej):
+`.venv\Scripts\python.exe native\evolve_native.py --workers 12`.
+
+## Port C++ (`native/`)
+
+Silnik MD2, MCTS (UCB1 i formuły GP), parser formuł i fitness w C++, wołane
+z Pythona przez pybind11 raz na partię. Budowa i weryfikacja przed użyciem:
+
+```powershell
+.\.venv\Scripts\python.exe native\setup.py build_ext --inplace
+.\.venv\Scripts\python.exe native\difftest.py
+.\.venv\Scripts\python.exe native\bench.py
+```
+
+Test różnicowy porównuje z Pythonem generator losowy, stan silnika po każdym
+kroku i całe partie akcja w akcję — także `pe_portals=off` i UCB1. Szczegóły
+w `native/README.md`. Przebiegi budżetowane czasem (300 s) idą w Pythonie:
+szybszy kod dałby tam więcej węzłów, a nie ten sam pomiar szybciej.
+
+## Uczenie ze wzmocnieniem (PPO)
+
+`rl/env.py` to ta sama gra co dla MCTS: nagroda = przyrost użyteczności persony
+w konwencji MCTS (+ opcjonalny bonus za wyjście), obserwacja to wycinek 39×39
+wokół bohatera, nielegalne akcje maskuje MaskablePPO. Opcje: maska pętli
+(`--max-wait`), tarcza przed śmiercią (`--shield`), symetrie map (`--augment`),
+mapy z generatora (`--generated`, `rl/mapgen.py`). `model.zip` to punkt
+kontrolny z najwyższą użytecznością na mapach treningowych, `--resume` dotrenowuje.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.minidungeons.rl.train --persona runner --timesteps 6000000 --shield 2 --generated 0.75 --out data\results\ppo_gen
+.\.venv\Scripts\python.exe -m src.minidungeons.rl.evaluate --variant ppo_gen --personas runner --deterministic --out data\results\rl_eval\ppo_gen_argmax_runner.csv
+```
+
+Ramiona w `data/results/`: `ppo_ego` (6 map GP + symetrie), `ppo_gen` (mapy
+z generatora + 6 map GP), `ppo_gen_lb` (jak `ppo_gen`, bonus 0,25),
+`ppo_ego11`, `ppo_ego11_lb` (uczone na wszystkich 11 mapach oceny —
+transdukcyjne, nie porównywać wprost z GP). Ocena: 11 map × 50 prób, akcje
+próbkowane albo argmax. Ślady partii obejrzy `frontend/replay.py`.
 
 ## Ręczna rozgrywka
 
@@ -263,8 +331,10 @@ data/                         niezmienne wejścia eksperymentu
   maps/md2/source-images/     obrazy źródłowe i siatki kontrolne
   rules/                      parametry silnika, person i polityk (JSON)
   results/                    obowiązujące wyniki (poza gitem): ucb1_bfs.csv,
-                              ours_bfs.csv, ours_bfs10.csv, gp_generations_bfs.csv,
-                              gp_runs_bfs.json, ślady *_paths.jsonl, heatmapy
+                              ours_bfs*.csv (off, x10, on, fix), gp_runs_bfs*.json,
+                              gp_generations_bfs*.csv, ucb1_native_3m.csv,
+                              ppo_*/ (modele, krzywe), rl_eval/ (oceny PPO),
+                              ślady *_paths.jsonl
 docs/
   rules/                      zasady gry i decyzje rekonstrukcyjne
   project/                    plan pracy inżynierskiej
@@ -274,9 +344,13 @@ src/minidungeons/
   domain/                     silnik gry, persony, reguły, MCTS i ewolucja GP
   infrastructure/             ścieżki, ślady partii, runner eksperymentów
   cli/                        programy konsolowe: agent losowy, eksperyment, ewolucja
+  rl/                         PPO: środowisko, trening, ocena, generator map
   frontend/                   pygame, wymaga extras `gui`:
                                 game_loop.py — ręczna rozgrywka
                                 heatmap.py   — heatmapa odwiedzin
+                                replay.py    — odtwarzacz partii ze śladów
+native/                       port C++ silnika i MCTS, test różnicowy, benchmark
+scripts/                      przebiegi, z których pochodzą obowiązujące wyniki
 tests/                        testy według warstw
 tools/                        walidator zamrożonego benchmarku
 archive/                      materiał pomocniczy (poza gitem)
@@ -287,6 +361,8 @@ archive/                      materiał pomocniczy (poza gitem)
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe tools\validate_stage0.py
+.\.venv\Scripts\python.exe native\difftest.py
+.\.venv\Scripts\ruff.exe check src tests tools scripts native
 ```
 
 ## Dokumentacja

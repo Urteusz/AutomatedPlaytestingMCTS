@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import random
 import time
+from dataclasses import dataclass
+from pathlib import Path
 
 from .engine import Action, Coord, MiniDungeon
 from .expression import TERMINAL_ORDER, terminal_values
-from .selection_policy import SelectionPolicy, UCB1Policy
-
 from .personas import utility
+from .selection_policy import SelectionPolicy, UCB1Policy
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +21,7 @@ class TreeSpec:
     pe_mode: str = "binary"
 
     @classmethod
-    def for_policy(cls, policy: SelectionPolicy) -> "TreeSpec":
+    def for_policy(cls, policy: SelectionPolicy) -> TreeSpec:
         return cls(
             collect_terminals=policy.needs_terminals,
             pe_mode=policy.pe_mode,
@@ -41,7 +40,7 @@ class Node:
     def __init__(
         self,
         env: MiniDungeon,
-        parent: "Node | None",
+        parent: Node | None,
         action: Action | None,
         spec: TreeSpec = DEFAULT_SPEC,
     ) -> None:
@@ -49,7 +48,7 @@ class Node:
         self.parent = parent
         self.action = action
         self.spec = spec
-        self.children: dict[Action, "Node"] = {}
+        self.children: dict[Action, Node] = {}
         self.untried = list(env.legal_actions())
         self.visits: int = 0
         self.total_utility = 0.0
@@ -61,7 +60,7 @@ class Node:
             [0.0] * len(TERMINAL_ORDER) if spec.collect_terminals else None
         )
 
-    def expand(self, rng: random.Random) -> "Node":
+    def expand(self, rng: random.Random) -> Node:
         chosen = rng.choice(self.untried)
         self.untried.remove(chosen)
         new_env = self.env.clone()
@@ -79,7 +78,7 @@ class Node:
     def mean_utility(self) -> float:
         return self.total_utility / self.visits
 
-    def viable_children(self) -> list["Node"]:
+    def viable_children(self) -> list[Node]:
         return [child for child in self.children.values() if not child.exhausted]
 
     def refresh_exhausted(self) -> None:
@@ -87,7 +86,7 @@ class Node:
             return
         self.exhausted = all(child.exhausted for child in self.children.values())
 
-    def best_child(self, policy: SelectionPolicy) -> "Node":
+    def best_child(self, policy: SelectionPolicy) -> Node:
         return policy.select(self)
 
 

@@ -6,8 +6,9 @@ Wezly: +, -, *, /; liscie: zmienna z Tabeli I albo stala.
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .engine import MiniDungeon
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 # R (Rbar) jest statystyka wezla, nie stanu gry, wiec stoi osobno.
 TERMINAL_ORDER = ("ST", "PE", "PD", "TO", "MTK", "MS", "JT", "HL", "TU", "TS", "IC")
 RBAR = "Rbar"
-VARIABLE_NAMES = TERMINAL_ORDER + (RBAR,)
+VARIABLE_NAMES = (*TERMINAL_ORDER, RBAR)
 
 # Tabela I -> klucze z MiniDungeon.metric_values(). PD, TO, MS i IC sa
 # stosunkami, zgodnie z przypisem pod Tabela I w artykule.
@@ -67,8 +68,8 @@ class Var:
 @dataclass(frozen=True, slots=True)
 class BinOp:
     op: str
-    left: "Expr"
-    right: "Expr"
+    left: Expr
+    right: Expr
 
     def depth(self) -> int:
         return 1 + max(self.left.depth(), self.right.depth())
@@ -198,7 +199,7 @@ def from_dict(data: dict[str, object]) -> Expr:
 PE_MODES = ("binary", "normalized", "manhattan", "graded")
 
 
-def resolve_pe(environment: "MiniDungeon", pe_mode: str) -> float:
+def resolve_pe(environment: MiniDungeon, pe_mode: str) -> float:
     """Wartosc terminala PE w wybranym wariancie.
 
     binary: 0 na wyjsciu, -1 wpp; normalized/manhattan: 1 - dystans/maks (manhattan
@@ -218,7 +219,7 @@ def resolve_pe(environment: "MiniDungeon", pe_mode: str) -> float:
     raise ValueError(f"Nieznany pe_mode {pe_mode!r}; oczekiwano {PE_MODES}")
 
 
-def terminal_values(environment: "MiniDungeon", *, pe_mode: str = "binary") -> tuple[float, ...]:
+def terminal_values(environment: MiniDungeon, *, pe_mode: str = "binary") -> tuple[float, ...]:
     """Zmienne Tabeli I dla stanu w wezle, w kolejnosci TERMINAL_ORDER.
 
     HL jest znormalizowane do [0,1] jak w kodzie autorow (`Health/10d`).

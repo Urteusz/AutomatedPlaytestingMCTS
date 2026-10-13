@@ -7,14 +7,17 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass, field
 import math
+from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path
+
 import pygame
 
 from minidungeons.domain import MiniDungeon
 from minidungeons.domain.engine import WALL, Coord
 from minidungeons.domain.personas import PERSONA_NAMES
+from minidungeons.frontend import game_loop as board
 from minidungeons.infrastructure.paths import MD2_BENCHMARK_DIR, RESULTS_DIR
 from minidungeons.infrastructure.traces import (
     average_visits,
@@ -23,8 +26,6 @@ from minidungeons.infrastructure.traces import (
     paths_by_persona,
     trace_path_for,
 )
-
-from minidungeons.frontend import game_loop as board
 
 HUD_HEIGHT = 210
 MIN_WINDOW_WIDTH = 720
@@ -199,13 +200,13 @@ def heat_color(fraction: float) -> tuple[int, int, int]:
     """Interpolacja liniowa miedzy przystankami HEAT_STOPS."""
 
     fraction = min(max(fraction, 0.0), 1.0)
-    for (low, low_color), (high, high_color) in zip(HEAT_STOPS, HEAT_STOPS[1:]):
+    for (low, low_color), (high, high_color) in pairwise(HEAT_STOPS):
         if fraction <= high:
             span = high - low
             local = 0.0 if span == 0 else (fraction - low) / span
             return tuple(  # type: ignore[return-value]
                 round(start + (end - start) * local)
-                for start, end in zip(low_color, high_color)
+                for start, end in zip(low_color, high_color, strict=True)
             )
     return HEAT_STOPS[-1][1]
 
@@ -282,7 +283,7 @@ def stat_text(dataset: Dataset, map_name: str, persona: str) -> list[str]:
     return cells
 
 
-def stats_render(screen, dataset: Dataset, map_name: str, view: "View", top: int) -> None:
+def stats_render(screen, dataset: Dataset, map_name: str, view: View, top: int) -> None:
     """Metryki wszystkich person i srednia. Wiersz pokazywanej heatmapy na zolto."""
 
     headers = ["win", *(header for _, header, _ in STAT_COLUMNS)]
@@ -308,7 +309,7 @@ def hud_render(
     screen,
     dataset: Dataset,
     env: MiniDungeon,
-    view: "View",
+    view: View,
     heat: dict[Coord, float],
     games: int,
     hovered: Coord | None,

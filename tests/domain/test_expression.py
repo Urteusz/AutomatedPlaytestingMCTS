@@ -72,7 +72,8 @@ class PublishedFormulaTests(unittest.TestCase):
     def test_runner_formula_degenerates_under_binary_pe(self) -> None:
         """Czlon PE*PE*(PE+1) z eq. (6) zeruje sie dla surowego PE w {0, -1}.
 
-        W drzewie terminale sa srednia po symulacjach, wiec przy binarnym PE czlon juz sie nie zeruje.
+        W drzewie terminale sa srednia po symulacjach, wiec przy binarnym PE czlon juz sie
+        nie zeruje.
         """
 
         score = compile_expression(parse(self.formulas["runner"]))

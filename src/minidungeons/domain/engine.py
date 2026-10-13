@@ -3,14 +3,14 @@ to osobne warstwy, zeby MCTS mogl tanio klonowac stan."""
 
 from __future__ import annotations
 
+import json
 from collections import deque
+from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass, replace
 from heapq import heappop, heappush
-import json
 from pathlib import Path
-from typing import Iterable, Iterator
 
-from minidungeons.domain.rules import GameRules, PROJECT_ROOT, load_rules
+from minidungeons.domain.rules import PROJECT_ROOT, GameRules, load_rules
 
 Coord = tuple[int, int]
 WALL, EMPTY, ENTRANCE, EXIT = "#", ".", "E", "X"
@@ -44,14 +44,14 @@ class Action:
     target_id: int | None = None
 
     @classmethod
-    def move(cls, direction: str) -> "Action":
+    def move(cls, direction: str) -> Action:
         token = direction.upper()
         if token not in DIRECTION_DELTA:
             raise ValueError(f"Unknown direction: {direction!r}")
         return cls(kind="move", direction=token)
 
     @classmethod
-    def throw(cls, target_id: int) -> "Action":
+    def throw(cls, target_id: int) -> Action:
         return cls(kind="throw", target_id=int(target_id))
 
     def __str__(self) -> str:
@@ -102,7 +102,9 @@ class MiniDungeon:
     """Cloneable state of one deterministic MiniDungeons 2 playthrough."""
 
     PLAYER_MAX_HP = 10
-    DEFAULT_PORTAL_PAIRS_PATH = PROJECT_ROOT / "data" / "maps" / "md2" / "benchmark" / "portal_pairs.json"
+    DEFAULT_PORTAL_PAIRS_PATH = (
+        PROJECT_ROOT / "data" / "maps" / "md2" / "benchmark" / "portal_pairs.json"
+    )
 
     def __init__(
             self,
@@ -192,19 +194,26 @@ class MiniDungeon:
         self._initial_potions = sum(value == "potion" for value in objects.values())
         self._initial_treasures = sum(value == "treasure" for value in objects.values())
         self._initial_killable_monsters = sum(kind != "minitaur" for kind, _, _ in npc_specs)
-        self._initial_completion_objects = self._initial_potions + self._initial_treasures + self._initial_killable_monsters
+        self._initial_completion_objects = (
+            self._initial_potions + self._initial_treasures + self._initial_killable_monsters
+        )
 
     def _load_portal_links(
             self,
             portal_pairs_path: str | Path | None,
             explicit_pairs: Iterable[tuple[Coord, Coord]] | None,
     ) -> dict[Coord, Coord]:
-        map_portals = {position for position, kind in self._object_template.items() if kind == "portal"}
+        map_portals = {
+            position for position, kind in self._object_template.items() if kind == "portal"
+        }
         pairs: list[tuple[Coord, Coord]] = []
         if explicit_pairs is not None:
             pairs = [(tuple(first), tuple(second)) for first, second in explicit_pairs]
         else:
-            metadata_path = Path(portal_pairs_path).resolve() if portal_pairs_path else self.DEFAULT_PORTAL_PAIRS_PATH
+            metadata_path = (
+                Path(portal_pairs_path).resolve() if portal_pairs_path
+                else self.DEFAULT_PORTAL_PAIRS_PATH
+            )
             if metadata_path.exists():
                 try:
                     with metadata_path.open(encoding="utf-8") as handle:
@@ -215,7 +224,9 @@ class MiniDungeon:
                 pairs = [(tuple(pair[0]), tuple(pair[1])) for pair in raw_pairs if len(pair) == 2]
         paired_positions = {position for pair in pairs for position in pair}
         if paired_positions != map_portals and (paired_positions or map_portals):
-            raise ValueError(f"Portal metadata {sorted(paired_positions)} != map {sorted(map_portals)}")
+            raise ValueError(
+                f"Portal metadata {sorted(paired_positions)} != map {sorted(map_portals)}"
+            )
         links: dict[Coord, Coord] = {}
         for first, second in pairs:
             if first == second or first in links or second in links:
@@ -242,7 +253,7 @@ class MiniDungeon:
         self.last_events: list[dict[str, object]] = []
         return self.state()
 
-    def clone(self) -> "MiniDungeon":
+    def clone(self) -> MiniDungeon:
         # teren, reguly, portale i dystanse sa niemutowalne - klony je wspoldziela
         other = object.__new__(MiniDungeon)
         other.__dict__.update(self.__dict__)
@@ -290,9 +301,12 @@ class MiniDungeon:
             "proximity_to_exit": self.proximity_to_exit(),
             "potion_ratio": self._ratio(self.metrics.potions_drunk, self._initial_potions),
             "treasure_ratio": self._ratio(self.metrics.treasures_opened, self._initial_treasures),
-            "monster_ratio": self._ratio(self.metrics.monsters_slain, self._initial_killable_monsters),
+            "monster_ratio": self._ratio(
+                self.metrics.monsters_slain, self._initial_killable_monsters
+            ),
             "interactive_ratio": self._ratio(
-                self.metrics.potions_drunk + self.metrics.treasures_opened + self.metrics.monsters_slain,
+                self.metrics.potions_drunk + self.metrics.treasures_opened
+                + self.metrics.monsters_slain,
                 self._initial_completion_objects,
             ),
             "interactive_non_monster_ratio": self._ratio(
@@ -323,15 +337,6 @@ class MiniDungeon:
         if not self._exit_distance_span:
             return 1.0
         return 1.0 - distance / self._exit_distance_span
-
-    def manhattan_proximity_to_exit(self) -> float:
-        """PE ciagle w [0, 1] z dystansu manhattan, bez wiedzy o scianach."""
-
-        if not self._manhattan_span:
-            return 1.0
-        row, column = self.hero_position
-        distance = abs(row - self.exit[0]) + abs(column - self.exit[1])
-        return 1.0 - distance / self._manhattan_span
 
     def manhattan_proximity_to_exit(self) -> float:
         """PE ciagle w [0, 1] z dystansu manhattan, bez wiedzy o scianach."""
@@ -652,7 +657,8 @@ class MiniDungeon:
         candidates: list[tuple[int, int, int, int, Coord]] = []
         if self.has_line_of_sight(npc.position, self.hero_position):
             distance = self.sight_distance(npc.position, self.hero_position)
-            candidates.append((distance, 1, self.hero_position[0], self.hero_position[1], self.hero_position))
+            row, column = self.hero_position
+            candidates.append((distance, 1, row, column, self.hero_position))
         for position, object_kind in self.objects.items():
             if object_kind == preferred_object and self.has_line_of_sight(npc.position, position):
                 distance = self.sight_distance(npc.position, position)
@@ -736,7 +742,9 @@ class MiniDungeon:
     def _merge_blobs(self, first: NPC, second: NPC) -> list[dict[str, object]]:
         destination = second.position
         # zostaje blob, ktory byl wczesniej na mapie
-        survivor, removed = (first, second) if first.initial_order <= second.initial_order else (second, first)
+        survivor, removed = (
+            (first, second) if first.initial_order <= second.initial_order else (second, first)
+        )
         max_power = int(self.rules.value("monsters", "blob", "max_power"))
         survivor.power = min(max_power, first.power + second.power)
         survivor.hp = survivor.power

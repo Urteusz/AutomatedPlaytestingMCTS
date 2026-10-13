@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter, deque
 from hashlib import sha256
-import json
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP_DIR = ROOT / "data" / "maps" / "md2" / "benchmark"
@@ -84,7 +83,8 @@ def validate_benchmark() -> tuple[list[str], list[str]]:
     empty_portal_maps = sorted(map_id for map_id, pairs in portal_maps.items() if not pairs)
     if empty_portal_maps:
         errors.append(
-            f"portal_pairs must omit maps without portals instead of empty records: {empty_portal_maps}"
+            "portal_pairs must omit maps without portals instead of empty records: "
+            f"{empty_portal_maps}"
         )
 
     actual_layouts = sorted(path.stem for path in MAP_DIR.glob("map??.txt"))

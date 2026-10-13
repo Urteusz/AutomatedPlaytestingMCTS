@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import random
 import sys
 import time
+from pathlib import Path
 
-from ..domain import MiniDungeon
-
+from minidungeons.domain import MiniDungeon
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_MAP = PROJECT_ROOT / "data" / "maps" / "md2" / "benchmark" / "map01.txt"
@@ -34,7 +33,7 @@ def run_one(
         if verbose:
             event_names = ",".join(str(event["type"]) for event in info["events"])
             print(
-                f"tura {turn:3d} | {str(action):12s} | HP {state['hp']:2d} | "
+                f"tura {turn:3d} | {action!s:12s} | HP {state['hp']:2d} | "
                 f"pos {state['hero_position']} | {event_names}"
             )
         if draw:
@@ -58,7 +57,8 @@ def main() -> None:
     rng = random.Random(args.seed)
     env = MiniDungeon(args.map)
     print(f"Mapa: {args.map} ({env.height}x{env.width})")
-    print(f"Wejście: {env.entrance}  Wyjście: {env.exit}  ruleset: {env.rules.data['ruleset_id']}\n")
+    print(f"Wejście: {env.entrance}  Wyjście: {env.exit}  "
+          f"ruleset: {env.rules.data['ruleset_id']}\n")
 
     if args.trials == 1:
         run_one(

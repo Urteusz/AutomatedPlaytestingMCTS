@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from functools import lru_cache
 import json
+from collections.abc import Mapping
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -25,7 +25,7 @@ PERSONA_NAMES = (
 
 
 # cache, zeby MCTS nie czytal pliku przy kazdej ewaluacji
-@lru_cache(maxsize=None)
+@cache
 def _read_personas(path: str) -> dict[str, Any]:
     with open(path, encoding="utf-8") as handle:
         return json.load(handle)
@@ -57,7 +57,7 @@ def utility_from_metrics(
     return score
 
 
-def utility(persona: str, environment: "MiniDungeon") -> float:
+def utility(persona: str, environment: MiniDungeon) -> float:
     """Evaluate a live or cloned environment state."""
 
     return utility_from_metrics(persona, environment.metric_values())

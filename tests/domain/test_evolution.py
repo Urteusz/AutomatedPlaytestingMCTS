@@ -16,7 +16,6 @@ from src.minidungeons.domain.evolution import (
 from src.minidungeons.domain.expression import (
     BinOp,
     Const,
-    Expr,
     Var,
     iter_subtrees,
     size,

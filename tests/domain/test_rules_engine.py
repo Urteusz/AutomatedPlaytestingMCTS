@@ -1,11 +1,16 @@
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
-from src.minidungeons.domain import Action, MiniDungeon, load_personas, load_rules, utility_from_metrics
+from src.minidungeons.domain import (
+    Action,
+    MiniDungeon,
+    load_personas,
+    load_rules,
+    utility_from_metrics,
+)
 from src.minidungeons.domain.rules import DEFAULT_RULES_PATH
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MAP_DIR = PROJECT_ROOT / "data" / "maps" / "md2" / "benchmark"
@@ -355,7 +360,8 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(0, env.metrics.treasures_opened)  # the ogre ate it, not the hero
 
         self.assertNotIn((4, 7), env.objects)  # potion consumed by the blob
-        self.assertEqual(0, env.metrics.potions_drunk)  # blob does not heal or count as hero drinking
+        # blob does not heal or count as hero drinking
+        self.assertEqual(0, env.metrics.potions_drunk)
 
     def test_axial_geometry_freezes_the_figure1_ogre(self):
         """Pod `axis4` ogr z MD2 Fig. 1 nie ruszylby sie w trzy tury, wbrew panelowi."""
